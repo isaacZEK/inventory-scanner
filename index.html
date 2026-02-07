@@ -1,192 +1,329 @@
-import tkinter as tk
-from tkinter import ttk
-import qrcode
-from PIL import Image, ImageTk
-import socket
-import asyncio
-import websockets
-import threading
-import json
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TwinOne Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            background: #1a1a1a; 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            padding: 20px; 
+            box-sizing: border-box; 
+        }
+        .container { width: 100%; max-width: 400px; text-align: center; }
+        #reader { 
+            width: 100%; 
+            border-radius: 10px; 
+            overflow: hidden; 
+            background: #000; 
+            margin-bottom: 20px; 
+            min-height: 300px; 
+        }
+        .status { padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 1em; }
+        .connected { background: #10B981; color: white; }
+        .disconnected { background: #EF4444; color: white; }
+        .warning { background: #F59E0B; color: white; }
+        .info { background: #3B82F6; color: white; }
+        .scanned-data { 
+            font-size: 1.4em; 
+            color: #6366F1; 
+            margin-top: 10px; 
+            min-height: 2em; 
+            word-break: break-all; 
+            padding: 15px;
+            background: rgba(99, 102, 241, 0.15);
+            border-radius: 8px;
+            border: 2px solid rgba(99, 102, 241, 0.3);
+        }
+        .scanned-data.pulse {
+            animation: pulse 0.5s ease-in-out;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); background: rgba(16, 185, 129, 0.3); }
+        }
+        h2 { margin-bottom: 10px; font-size: 1.5em; }
+        p { color: #aaa; font-size: 0.9em; margin: 10px 0 5px 0; }
+        .info-box { 
+            background: rgba(59, 130, 246, 0.2); 
+            color: white; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 15px; 
+            font-size: 0.9em;
+            border: 1px solid rgba(59, 130, 246, 0.5);
+        }
+        .step { margin: 8px 0; text-align: left; }
+        .step-number { 
+            display: inline-block; 
+            background: white; 
+            color: #3B82F6; 
+            width: 24px; 
+            height: 24px; 
+            border-radius: 50%; 
+            text-align: center; 
+            line-height: 24px; 
+            font-weight: bold; 
+            margin-right: 8px; 
+        }
+        .scan-count {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: #10B981;
+            padding: 8px 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📦 Inventory Scanner</h2>
+        
+        <div id="connection-status" class="status info">Ready to scan QR code</div>
+        
+        <div id="instructions" class="info-box">
+            <div class="step">
+                <span class="step-number">1</span>
+                Allow camera access when prompted
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Point camera at QR code on your PC
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Start scanning product barcodes
+            </div>
+        </div>
+        
+        <div id="reader"></div>
+        
+        <div id="scan-stats" class="scan-count hidden">
+            Scans sent: <span id="scan-count">0</span>
+        </div>
+        
+        <p>Last Scanned:</p>
+        <div id="last-scanned" class="scanned-data">-</div>
+    </div>
+    
+    <script>
+        const statusDiv = document.getElementById('connection-status');
+        const lastScannedDiv = document.getElementById('last-scanned');
+        const instructionsDiv = document.getElementById('instructions');
+        const scanStatsDiv = document.getElementById('scan-stats');
+        const scanCountSpan = document.getElementById('scan-count');
+        
+        let socket;
+        let isScanning = true;
+        let html5QrcodeScanner;
+        let isConnectedToPc = false;
+        let scanCount = 0;
 
-class BarcodeScannerBridge(tk.Toplevel):
-    def __init__(self, parent, callback):
-        super().__init__(parent)
-        self.callback = callback
-        self.title("Mobile Scanner Bridge")
-        self.geometry("400x550")
-        self.configure(bg='#1a1a1a')
-        
-        # Get local IP
-        self.ip_address = self.get_local_ip()
-        self.scanner_url = f"http://{self.ip_address}:8000/scanner.html?ip={self.ip_address}"
-        
-        # WebSocket server
-        self.server = None
-        self.server_thread = None
-        self.connected_clients = set()
-        
-        self.create_widgets()
-        self.start_server()
-        
-    def get_local_ip(self):
-        """Get the local IP address"""
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except Exception:
-            return "127.0.0.1"
-    
-    def create_widgets(self):
-        """Create the UI"""
-        # Title
-        title = tk.Label(self, text="📱 Mobile Scanner", 
-                        font=('Arial', 20, 'bold'),
-                        bg='#1a1a1a', fg='white')
-        title.pack(pady=20)
-        
-        # Instructions
-        instructions = tk.Label(self, 
-                               text="Scan this QR code with your phone camera",
-                               font=('Arial', 12),
-                               bg='#1a1a1a', fg='#aaa')
-        instructions.pack(pady=5)
-        
-        # QR Code
-        self.qr_label = tk.Label(self, bg='#1a1a1a')
-        self.qr_label.pack(pady=20)
-        self.generate_qr_code()
-        
-        # Connection status
-        self.status_frame = tk.Frame(self, bg='#1a1a1a')
-        self.status_frame.pack(pady=10)
-        
-        self.status_label = tk.Label(self.status_frame,
-                                     text="⚪ Waiting for connection...",
-                                     font=('Arial', 11, 'bold'),
-                                     bg='#F59E0B', fg='white',
-                                     padx=15, pady=8,
-                                     relief='solid', borderwidth=2)
-        self.status_label.pack()
-        
-        # Last scanned
-        tk.Label(self, text="Last Scanned:",
-                font=('Arial', 10),
-                bg='#1a1a1a', fg='#aaa').pack(pady=(20, 5))
-        
-        self.last_scan_label = tk.Label(self,
-                                        text="-",
-                                        font=('Arial', 14, 'bold'),
-                                        bg='#2a2a2a', fg='#6366F1',
-                                        padx=20, pady=10,
-                                        relief='solid', borderwidth=1)
-        self.last_scan_label.pack(pady=5)
-        
-        # Scan counter
-        self.scan_count = 0
-        self.count_label = tk.Label(self,
-                                    text="Scans received: 0",
-                                    font=('Arial', 10),
-                                    bg='#1a1a1a', fg='#10B981')
-        self.count_label.pack(pady=10)
-        
-        # URL display
-        url_frame = tk.Frame(self, bg='#2a2a2a', relief='solid', borderwidth=1)
-        url_frame.pack(pady=10, padx=20, fill='x')
-        
-        tk.Label(url_frame, text="Manual URL:",
-                font=('Arial', 9),
-                bg='#2a2a2a', fg='#aaa').pack(anchor='w', padx=10, pady=(5, 0))
-        
-        url_text = tk.Text(url_frame, height=2, width=35,
-                          font=('Courier', 9),
-                          bg='#1a1a1a', fg='white',
-                          wrap='word', relief='flat')
-        url_text.insert('1.0', self.scanner_url)
-        url_text.config(state='disabled')
-        url_text.pack(padx=10, pady=5)
-        
-    def generate_qr_code(self):
-        """Generate QR code for the scanner URL"""
-        qr = qrcode.QRCode(version=1, box_size=10, border=2)
-        qr.add_data(self.scanner_url)
-        qr.make(fit=True)
-        
-        img = qr.make_image(fill_color="black", back_color="white")
-        img = img.resize((250, 250), Image.Resampling.LANCZOS)
-        
-        photo = ImageTk.PhotoImage(img)
-        self.qr_label.config(image=photo)
-        self.qr_label.image = photo
-    
-    def start_server(self):
-        """Start the WebSocket server"""
-        self.server_thread = threading.Thread(target=self.run_server, daemon=True)
-        self.server_thread.start()
-    
-    def run_server(self):
-        """Run the WebSocket server"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        async def handler(websocket, path):
-            self.connected_clients.add(websocket)
-            self.update_status(True)
+        // Get IP from URL Parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        let pcIp = urlParams.get('ip');
+
+        function connectWebSocket(ip) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+
+            statusDiv.innerText = "🔄 Connecting to PC at " + ip + "...";
+            statusDiv.className = "status warning";
+
+            try {
+                socket = new WebSocket(`ws://${ip}:8765`);
+
+                socket.onopen = () => {
+                    statusDiv.innerText = "🟢 Connected to PC - Start scanning!";
+                    statusDiv.className = "status connected";
+                    isConnectedToPc = true;
+                    instructionsDiv.classList.add('hidden');
+                    scanStatsDiv.classList.remove('hidden');
+                    
+                    // Vibrate on successful connection
+                    if (navigator.vibrate) {
+                        navigator.vibrate([200, 100, 200]);
+                    }
+                };
+
+                socket.onclose = () => {
+                    statusDiv.innerText = "🔴 Disconnected - Reconnecting...";
+                    statusDiv.className = "status disconnected";
+                    isConnectedToPc = false;
+                    setTimeout(() => connectWebSocket(ip), 3000);
+                };
+
+                socket.onerror = (error) => {
+                    console.error("WebSocket Error:", error);
+                    statusDiv.innerText = "❌ Connection failed - Check PC app";
+                    statusDiv.className = "status disconnected";
+                };
+
+                socket.onmessage = (event) => {
+                    // Handle acknowledgment from server if needed
+                    console.log("Server response:", event.data);
+                };
+                
+            } catch (error) {
+                statusDiv.innerText = "❌ Connection error: " + error.message;
+                statusDiv.className = "status disconnected";
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            if (!isScanning) return;
+
+            isScanning = false;
+
+            // Check if this is a setup QR code (contains IP parameter)
+            if (decodedText.includes('?ip=') || decodedText.match(/\d+\.\d+\.\d+\.\d+/)) {
+                handleSetupQR(decodedText);
+            } else if (isConnectedToPc) {
+                // This is a product barcode - send to PC
+                handleBarcodeScanning(decodedText);
+            } else {
+                // Scanned a barcode but not connected
+                lastScannedDiv.innerText = decodedText;
+                statusDiv.innerText = "⚠️ Scan QR code on PC first to connect";
+                statusDiv.className = "status warning";
+            }
+
+            setTimeout(() => { isScanning = true; }, 1500);
+        }
+
+        function handleSetupQR(qrText) {
+            // Extract IP from QR code
+            let ip = null;
+            const ipMatch = qrText.match(/ip=([0-9.]+)/);
+            if (ipMatch) {
+                ip = ipMatch[1];
+            } else {
+                // Try to extract raw IP
+                const rawIpMatch = qrText.match(/(\d+\.\d+\.\d+\.\d+)/);
+                if (rawIpMatch) {
+                    ip = rawIpMatch[1];
+                }
+            }
+
+            if (ip) {
+                pcIp = ip;
+                lastScannedDiv.innerText = "✅ QR Code: " + ip;
+                lastScannedDiv.classList.add('pulse');
+                setTimeout(() => lastScannedDiv.classList.remove('pulse'), 500);
+                
+                statusDiv.innerText = "✅ QR Scanned! Connecting to PC...";
+                statusDiv.className = "status info";
+                
+                // Vibrate for confirmation
+                if (navigator.vibrate) {
+                    navigator.vibrate([100, 50, 100, 50, 100]);
+                }
+                
+                // Connect after brief delay
+                setTimeout(() => {
+                    connectWebSocket(pcIp);
+                }, 1000);
+            } else {
+                statusDiv.innerText = "❌ Invalid QR code - no IP found";
+                statusDiv.className = "status disconnected";
+            }
+        }
+
+        function handleBarcodeScanning(barcode) {
+            lastScannedDiv.innerText = barcode;
+            lastScannedDiv.classList.add('pulse');
+            setTimeout(() => lastScannedDiv.classList.remove('pulse'), 500);
+
+            // Send to WebSocket
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(barcode);
+                scanCount++;
+                scanCountSpan.innerText = scanCount;
+                
+                // Visual feedback
+                statusDiv.innerText = "✅ Sent to PC: " + barcode;
+                statusDiv.className = "status connected";
+                
+                // Vibrate on successful scan
+                if (navigator.vibrate) {
+                    navigator.vibrate(100);
+                }
+                
+                // Reset status message after 2 seconds
+                setTimeout(() => {
+                    if (isConnectedToPc) {
+                        statusDiv.innerText = "🟢 Connected to PC - Ready for next scan";
+                        statusDiv.className = "status connected";
+                    }
+                }, 2000);
+            } else {
+                statusDiv.innerText = "❌ Not connected - reconnecting...";
+                statusDiv.className = "status disconnected";
+                connectWebSocket(pcIp);
+            }
+        }
+
+        function onScanError(error) {
+            // Suppress frequent scanning errors
+        }
+
+        // Initialize scanner immediately
+        function initScanner() {
+            statusDiv.innerText = "📸 Requesting camera access...";
+            statusDiv.className = "status info";
             
-            try:
-                async for message in websocket:
-                    # Received barcode from mobile
-                    self.handle_scan(message)
-            finally:
-                self.connected_clients.remove(websocket)
-                if len(self.connected_clients) == 0:
-                    self.update_status(False)
-        
-        start_server = websockets.serve(handler, "0.0.0.0", 8765)
-        loop.run_until_complete(start_server)
-        loop.run_forever()
-    
-    def handle_scan(self, barcode):
-        """Handle received barcode"""
-        self.scan_count += 1
-        
-        # Update UI in main thread
-        self.after(0, lambda: self.update_scan_display(barcode))
-        
-        # Call the parent callback
-        if self.callback:
-            self.after(0, lambda: self.callback(barcode))
-    
-    def update_scan_display(self, barcode):
-        """Update the scan display"""
-        self.last_scan_label.config(text=barcode)
-        self.count_label.config(text=f"Scans received: {self.scan_count}")
-        
-        # Flash effect
-        self.last_scan_label.config(bg='#10B981')
-        self.after(300, lambda: self.last_scan_label.config(bg='#2a2a2a'))
-    
-    def update_status(self, connected):
-        """Update connection status"""
-        if connected:
-            self.status_label.config(
-                text="🟢 Phone Connected",
-                bg='#10B981'
-            )
-        else:
-            self.status_label.config(
-                text="⚪ Waiting for connection...",
-                bg='#F59E0B'
-            )
-    
-    def destroy(self):
-        """Clean up on close"""
-        # Close WebSocket server
-        if self.server:
-            self.server.close()
-        super().destroy()
+            try {
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader", 
+                    { 
+                        fps: 10, 
+                        qrbox: { width: 250, height: 250 },
+                        rememberLastUsedCamera: true,
+                        aspectRatio: 1.0,
+                        showTorchButtonIfSupported: true
+                    }
+                );
+                
+                html5QrcodeScanner.render(onScanSuccess, onScanError);
+                
+                // If IP already in URL, auto-connect
+                if (pcIp) {
+                    setTimeout(() => {
+                        connectWebSocket(pcIp);
+                    }, 1000);
+                } else {
+                    statusDiv.innerText = "📷 Camera ready - Scan QR code on PC";
+                    statusDiv.className = "status info";
+                }
+                
+            } catch (error) {
+                console.error("Scanner initialization error:", error);
+                statusDiv.innerText = "❌ Error: " + error.message;
+                statusDiv.className = "status disconnected";
+            }
+        }
+
+        // Start scanner on page load
+        window.addEventListener('load', () => {
+            initScanner();
+        });
+    </script>
+</body>
+</html>
+
 
 
 
