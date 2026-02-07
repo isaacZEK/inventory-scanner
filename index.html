@@ -3,6 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TwinOne Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .container { width: 90%; max-width: 400px; text-align: center; }
+        #reader { width: 100%; border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 20px; }
+        .status { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
+        .connected { background: #10B981; color: white; }
+        .disconnected { background: #EF4444; color: white; }
+        .scanned-data { font-size: 1.2em; color: #6366F1; margin-top: 10px; min-height: 1.5em; }
+        h2 { margin-bottom: 10px; }
+        p { color: #aaa; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📦 Inventory Scanner</h2>
+        <div id="connection-status" class="status disconnected">Disconnected</div>
+        
+        <div id="reader"></div>
+        
+        <p>Last Scanned:</p>
+        <div id="last-scanned" class="scanned-data">-</div>
+    </div>
+
+    <script>
+        const statusDiv = document.getElementById('connection-status');
+        const lastScannedDiv = document.getElementById('last-scanned');
+        let socket;
+        let isScanning = true;
+
+        // 1. Get IP from URL Parameters (passed via QR code)
+        const urlParams = new URLSearchParams(window.location.search);
+        const pcIp = urlParams.get('ip');
+
+        function connectWebSocket() {
+            if (!pcIp) {
+                statusDiv.innerText = "Error: No IP found in QR";
+                return;
+            }
+
+            socket = new WebSocket(`ws://${pcIp}:8765`);
+
+            socket.onopen = () => {
+                statusDiv.innerText = "🟢 Connected to PC";
+                statusDiv.className = "status connected";
+            };
+
+            socket.onclose = () => {
+                statusDiv.innerText = "🔴 Disconnected (Reconnecting...)";
+                statusDiv.className = "status disconnected";
+                setTimeout(connectWebSocket, 3000); // Retry every 3s
+            };
+
+            socket.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                socket.close();
+            };
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            if (!isScanning) return;
+
+            // Prevent rapid-fire scanning of the same code
+            isScanning = false;
+            lastScannedDiv.innerText = decodedText;
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(decodedText);
+                // Visual feedback could go here
+            }
+
+            // Resume scanning after 1.5 seconds
+            setTimeout(() => { isScanning = true; }, 1500);
+        }
+
+        // Initialize
+        if (pcIp) {
+            connectWebSocket();
+            const html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", { fps: 10, qrbox: 250 }
+            );
+            html5QrcodeScanner.render(onScanSuccess);
+        } else {
+            statusDiv.innerText = "Scan the QR code on your PC app to start.";
+        }
+    </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Scanner</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
@@ -143,4 +239,4 @@
         connect();
     </script>
 </body>
-</html> -->
+</html> --> -->
