@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        button {
+            background: #10B981;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            margin: 10px 0;
+            width: 100%;
+            cursor: pointer;
+        }
+        button:active {
+            background: #059669;
+        }
+        #log {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .connected { background: #10B981; }
+        .disconnected { background: #EF4444; }
+        .connecting { background: #F59E0B; }
+    </style>
+</head>
+<body>
+    <h2>WebSocket Connection Test</h2>
+    
+    <div id="status" class="status disconnected">Not Connected</div>
+    
+    <input type="text" id="ip-input" value="192.168.128.109" 
+           style="width: 100%; padding: 10px; margin: 10px 0; font-size: 16px;">
+    
+    <button onclick="connect()">Connect to PC</button>
+    <button onclick="sendTest()">Send Test Message</button>
+    
+    <div id="log"></div>
+    
+    <script>
+        let socket;
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        const ipInput = document.getElementById('ip-input');
+        
+        function log(message) {
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function connect() {
+            const ip = ipInput.value;
+            const url = `ws://${ip}:8765`;
+            
+            log(`Connecting to ${url}...`);
+            statusDiv.innerText = 'Connecting...';
+            statusDiv.className = 'status connecting';
+            
+            try {
+                socket = new WebSocket(url);
+                
+                socket.onopen = () => {
+                    log('✅ Connected!');
+                    statusDiv.innerText = '✅ Connected to PC';
+                    statusDiv.className = 'status connected';
+                };
+                
+                socket.onmessage = (event) => {
+                    log(`📨 Received: ${event.data}`);
+                };
+                
+                socket.onerror = (error) => {
+                    log(`❌ Error: ${error}`);
+                    statusDiv.innerText = '❌ Connection Error';
+                    statusDiv.className = 'status disconnected';
+                };
+                
+                socket.onclose = () => {
+                    log('Connection closed');
+                    statusDiv.innerText = '❌ Disconnected';
+                    statusDiv.className = 'status disconnected';
+                };
+            } catch (error) {
+                log(`❌ Exception: ${error.message}`);
+            }
+        }
+        
+        function sendTest() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const testMsg = 'TEST_BARCODE_' + Date.now();
+                socket.send(testMsg);
+                log(`📤 Sent: ${testMsg}`);
+            } else {
+                log('❌ Not connected!');
+                alert('Please connect first!');
+            }
+        }
+        
+        log('Ready to test connection');
+    </script>
+</body>
+</html>
+```
+
+**To use this test file:**
+
+1. Save it as `test_connection.html`
+2. Open it directly on your phone's browser (you can even email it to yourself or use any file sharing)
+3. Make sure your phone is on the same WiFi as your PC
+4. Click "Connect to PC"
+5. If connected, click "Send Test Message"
+
+**What you should see:**
+
+- **On your phone**: "✅ Connected to PC" and messages in the log
+- **On your PC terminal** (running test_websocket_server.py): You should see:
+```
+  ✅ Client connected from (phone_ip, port)
+  📦 Received: TEST_BARCODE_1234567890
