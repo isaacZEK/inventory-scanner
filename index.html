@@ -27,14 +27,13 @@
         <p>Last Scanned:</p>
         <div id="last-scanned" class="scanned-data">-</div>
     </div>
-
     <script>
         const statusDiv = document.getElementById('connection-status');
         const lastScannedDiv = document.getElementById('last-scanned');
         let socket;
         let isScanning = true;
 
-        // 1. Get IP from URL Parameters (passed via QR code)
+        // Get IP from URL Parameters (passed via QR code)
         const urlParams = new URLSearchParams(window.location.search);
         const pcIp = urlParams.get('ip');
 
@@ -54,7 +53,7 @@
             socket.onclose = () => {
                 statusDiv.innerText = "🔴 Disconnected (Reconnecting...)";
                 statusDiv.className = "status disconnected";
-                setTimeout(connectWebSocket, 3000); // Retry every 3s
+                setTimeout(connectWebSocket, 3000);
             };
 
             socket.onerror = (error) => {
@@ -66,16 +65,13 @@
         function onScanSuccess(decodedText, decodedResult) {
             if (!isScanning) return;
 
-            // Prevent rapid-fire scanning of the same code
             isScanning = false;
             lastScannedDiv.innerText = decodedText;
 
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(decodedText);
-                // Visual feedback could go here
             }
 
-            // Resume scanning after 1.5 seconds
             setTimeout(() => { isScanning = true; }, 1500);
         }
 
@@ -92,8 +88,6 @@
     </script>
 </body>
 </html>
-
-
 <!-- <!DOCTYPE html>
 <html lang="en">
 <head>
