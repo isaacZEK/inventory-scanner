@@ -1,229 +1,192 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TwinOne Scanner</title>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <style>
-        body { 
-            font-family: sans-serif; 
-            background: #1a1a1a; 
-            color: white; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            margin: 0; 
-            padding: 20px; 
-            box-sizing: border-box; 
-        }
-        .container { width: 100%; max-width: 400px; text-align: center; }
-        #reader { 
-            width: 100%; 
-            border-radius: 10px; 
-            overflow: hidden; 
-            background: #000; 
-            margin-bottom: 20px; 
-            min-height: 300px; 
-        }
-        .status { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
-        .connected { background: #10B981; color: white; }
-        .disconnected { background: #EF4444; color: white; }
-        .warning { background: #F59E0B; color: white; }
-        .info { background: #3B82F6; color: white; }
-        .scanned-data { 
-            font-size: 1.2em; 
-            color: #6366F1; 
-            margin-top: 10px; 
-            min-height: 1.5em; 
-            word-break: break-all; 
-            padding: 10px;
-            background: rgba(99, 102, 241, 0.1);
-            border-radius: 5px;
-        }
-        h2 { margin-bottom: 10px; }
-        p { color: #aaa; font-size: 0.9em; }
-        .info-box { 
-            background: #3B82F6; 
-            color: white; 
-            padding: 10px; 
-            border-radius: 5px; 
-            margin-bottom: 15px; 
-            font-size: 0.9em; 
-        }
-        .step { margin: 10px 0; text-align: left; }
-        .step-number { 
-            display: inline-block; 
-            background: white; 
-            color: #3B82F6; 
-            width: 24px; 
-            height: 24px; 
-            border-radius: 50%; 
-            text-align: center; 
-            line-height: 24px; 
-            font-weight: bold; 
-            margin-right: 8px; 
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>📦 Inventory Scanner</h2>
+import tkinter as tk
+from tkinter import ttk
+import qrcode
+from PIL import Image, ImageTk
+import socket
+import asyncio
+import websockets
+import threading
+import json
+
+class BarcodeScannerBridge(tk.Toplevel):
+    def __init__(self, parent, callback):
+        super().__init__(parent)
+        self.callback = callback
+        self.title("Mobile Scanner Bridge")
+        self.geometry("400x550")
+        self.configure(bg='#1a1a1a')
         
-        <div id="connection-status" class="status info">Ready to scan QR code</div>
+        # Get local IP
+        self.ip_address = self.get_local_ip()
+        self.scanner_url = f"http://{self.ip_address}:8000/scanner.html?ip={self.ip_address}"
         
-        <div id="instructions" class="info-box">
-            <div class="step">
-                <span class="step-number">1</span>
-                Allow camera access when prompted
-            </div>
-            <div class="step">
-                <span class="step-number">2</span>
-                Point camera at QR code on PC
-            </div>
-            <div class="step">
-                <span class="step-number">3</span>
-                Start scanning barcodes!
-            </div>
-        </div>
+        # WebSocket server
+        self.server = None
+        self.server_thread = None
+        self.connected_clients = set()
         
-        <div id="reader"></div>
+        self.create_widgets()
+        self.start_server()
         
-        <p>Last Scanned:</p>
-        <div id="last-scanned" class="scanned-data">-</div>
-    </div>
+    def get_local_ip(self):
+        """Get the local IP address"""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return "127.0.0.1"
     
-    <script>
-        const statusDiv = document.getElementById('connection-status');
-        const lastScannedDiv = document.getElementById('last-scanned');
-        const instructionsDiv = document.getElementById('instructions');
-        let socket;
-        let isScanning = true;
-        let html5QrcodeScanner;
-        let isConnectedToPc = false;
-
-        // Get IP from URL Parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        let pcIp = urlParams.get('ip');
-
-        function connectWebSocket(ip) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.close();
-            }
-
-            statusDiv.innerText = "🔄 Connecting to PC...";
-            statusDiv.className = "status warning";
-
-            socket = new WebSocket(`ws://${ip}:8765`);
-
-            socket.onopen = () => {
-                statusDiv.innerText = "🟢 Connected to PC - Ready to scan";
-                statusDiv.className = "status connected";
-                isConnectedToPc = true;
-                instructionsDiv.style.display = 'none';
-            };
-
-            socket.onclose = () => {
-                statusDiv.innerText = "🔴 Disconnected - Reconnecting...";
-                statusDiv.className = "status disconnected";
-                isConnectedToPc = false;
-                setTimeout(() => connectWebSocket(ip), 3000);
-            };
-
-            socket.onerror = (error) => {
-                console.error("WebSocket Error:", error);
-            };
-        }
-
-        function onScanSuccess(decodedText, decodedResult) {
-            if (!isScanning) return;
-
-            isScanning = false;
-            lastScannedDiv.innerText = decodedText;
-
-            // Check if this is a QR code with an IP address (for initial setup)
-            if (!isConnectedToPc && decodedText.includes('?ip=')) {
-                // Extract IP from QR code URL
-                const match = decodedText.match(/ip=([0-9.]+)/);
-                if (match) {
-                    pcIp = match[1];
-                    statusDiv.innerText = "✅ QR Code scanned! Connecting...";
-                    statusDiv.className = "status info";
-                    connectWebSocket(pcIp);
-                    
-                    // Optionally redirect to the scanned URL
-                    setTimeout(() => {
-                        window.location.href = decodedText;
-                    }, 1500);
-                    return;
-                }
-            }
-
-            // Send barcode to WebSocket if connected
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(decodedText);
-                
-                // Visual feedback
-                lastScannedDiv.style.background = 'rgba(16, 185, 129, 0.2)';
-                setTimeout(() => {
-                    lastScannedDiv.style.background = 'rgba(99, 102, 241, 0.1)';
-                }, 500);
-            }
-
-            // Vibration feedback if supported
-            if (navigator.vibrate) {
-                navigator.vibrate(200);
-            }
-
-            setTimeout(() => { isScanning = true; }, 1500);
-        }
-
-        function onScanError(error) {
-            // Suppress frequent scanning errors
-        }
-
-        // Initialize scanner immediately
-        function initScanner() {
-            statusDiv.innerText = "📸 Requesting camera access...";
-            statusDiv.className = "status info";
+    def create_widgets(self):
+        """Create the UI"""
+        # Title
+        title = tk.Label(self, text="📱 Mobile Scanner", 
+                        font=('Arial', 20, 'bold'),
+                        bg='#1a1a1a', fg='white')
+        title.pack(pady=20)
+        
+        # Instructions
+        instructions = tk.Label(self, 
+                               text="Scan this QR code with your phone camera",
+                               font=('Arial', 12),
+                               bg='#1a1a1a', fg='#aaa')
+        instructions.pack(pady=5)
+        
+        # QR Code
+        self.qr_label = tk.Label(self, bg='#1a1a1a')
+        self.qr_label.pack(pady=20)
+        self.generate_qr_code()
+        
+        # Connection status
+        self.status_frame = tk.Frame(self, bg='#1a1a1a')
+        self.status_frame.pack(pady=10)
+        
+        self.status_label = tk.Label(self.status_frame,
+                                     text="⚪ Waiting for connection...",
+                                     font=('Arial', 11, 'bold'),
+                                     bg='#F59E0B', fg='white',
+                                     padx=15, pady=8,
+                                     relief='solid', borderwidth=2)
+        self.status_label.pack()
+        
+        # Last scanned
+        tk.Label(self, text="Last Scanned:",
+                font=('Arial', 10),
+                bg='#1a1a1a', fg='#aaa').pack(pady=(20, 5))
+        
+        self.last_scan_label = tk.Label(self,
+                                        text="-",
+                                        font=('Arial', 14, 'bold'),
+                                        bg='#2a2a2a', fg='#6366F1',
+                                        padx=20, pady=10,
+                                        relief='solid', borderwidth=1)
+        self.last_scan_label.pack(pady=5)
+        
+        # Scan counter
+        self.scan_count = 0
+        self.count_label = tk.Label(self,
+                                    text="Scans received: 0",
+                                    font=('Arial', 10),
+                                    bg='#1a1a1a', fg='#10B981')
+        self.count_label.pack(pady=10)
+        
+        # URL display
+        url_frame = tk.Frame(self, bg='#2a2a2a', relief='solid', borderwidth=1)
+        url_frame.pack(pady=10, padx=20, fill='x')
+        
+        tk.Label(url_frame, text="Manual URL:",
+                font=('Arial', 9),
+                bg='#2a2a2a', fg='#aaa').pack(anchor='w', padx=10, pady=(5, 0))
+        
+        url_text = tk.Text(url_frame, height=2, width=35,
+                          font=('Courier', 9),
+                          bg='#1a1a1a', fg='white',
+                          wrap='word', relief='flat')
+        url_text.insert('1.0', self.scanner_url)
+        url_text.config(state='disabled')
+        url_text.pack(padx=10, pady=5)
+        
+    def generate_qr_code(self):
+        """Generate QR code for the scanner URL"""
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data(self.scanner_url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        img = img.resize((250, 250), Image.Resampling.LANCZOS)
+        
+        photo = ImageTk.PhotoImage(img)
+        self.qr_label.config(image=photo)
+        self.qr_label.image = photo
+    
+    def start_server(self):
+        """Start the WebSocket server"""
+        self.server_thread = threading.Thread(target=self.run_server, daemon=True)
+        self.server_thread.start()
+    
+    def run_server(self):
+        """Run the WebSocket server"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def handler(websocket, path):
+            self.connected_clients.add(websocket)
+            self.update_status(True)
             
-            try {
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "reader", 
-                    { 
-                        fps: 10, 
-                        qrbox: { width: 250, height: 250 },
-                        rememberLastUsedCamera: true,
-                        aspectRatio: 1.0,
-                        showTorchButtonIfSupported: true
-                    }
-                );
-                
-                html5QrcodeScanner.render(onScanSuccess, onScanError);
-                
-                if (pcIp) {
-                    connectWebSocket(pcIp);
-                } else {
-                    statusDiv.innerText = "📷 Camera ready - Scan QR code on PC";
-                    statusDiv.className = "status info";
-                }
-                
-            } catch (error) {
-                console.error("Scanner initialization error:", error);
-                statusDiv.innerText = "❌ Error: " + error.message;
-                statusDiv.className = "status disconnected";
-            }
-        }
-
-        // Start scanner on page load
-        window.addEventListener('load', () => {
-            initScanner();
-        });
-    </script>
-</body>
-</html>
+            try:
+                async for message in websocket:
+                    # Received barcode from mobile
+                    self.handle_scan(message)
+            finally:
+                self.connected_clients.remove(websocket)
+                if len(self.connected_clients) == 0:
+                    self.update_status(False)
+        
+        start_server = websockets.serve(handler, "0.0.0.0", 8765)
+        loop.run_until_complete(start_server)
+        loop.run_forever()
+    
+    def handle_scan(self, barcode):
+        """Handle received barcode"""
+        self.scan_count += 1
+        
+        # Update UI in main thread
+        self.after(0, lambda: self.update_scan_display(barcode))
+        
+        # Call the parent callback
+        if self.callback:
+            self.after(0, lambda: self.callback(barcode))
+    
+    def update_scan_display(self, barcode):
+        """Update the scan display"""
+        self.last_scan_label.config(text=barcode)
+        self.count_label.config(text=f"Scans received: {self.scan_count}")
+        
+        # Flash effect
+        self.last_scan_label.config(bg='#10B981')
+        self.after(300, lambda: self.last_scan_label.config(bg='#2a2a2a'))
+    
+    def update_status(self, connected):
+        """Update connection status"""
+        if connected:
+            self.status_label.config(
+                text="🟢 Phone Connected",
+                bg='#10B981'
+            )
+        else:
+            self.status_label.config(
+                text="⚪ Waiting for connection...",
+                bg='#F59E0B'
+            )
+    
+    def destroy(self):
+        """Clean up on close"""
+        # Close WebSocket server
+        if self.server:
+            self.server.close()
+        super().destroy()
 
 
 
