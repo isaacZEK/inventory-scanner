@@ -6,32 +6,38 @@
     <title>TwinOne Scanner</title>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .container { width: 90%; max-width: 400px; text-align: center; }
-        #reader { width: 100%; border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 20px; }
+        body { font-family: sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .container { width: 100%; max-width: 400px; text-align: center; }
+        #reader { width: 100%; border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 20px; min-height: 300px; }
         .status { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
         .connected { background: #10B981; color: white; }
         .disconnected { background: #EF4444; color: white; }
-        .scanned-data { font-size: 1.2em; color: #6366F1; margin-top: 10px; min-height: 1.5em; }
+        .warning { background: #F59E0B; color: white; }
+        .scanned-data { font-size: 1.2em; color: #6366F1; margin-top: 10px; min-height: 1.5em; word-break: break-all; }
         h2 { margin-bottom: 10px; }
         p { color: #aaa; font-size: 0.9em; }
+        .info { background: #3B82F6; color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 0.9em; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>📦 Inventory Scanner</h2>
-        <div id="connection-status" class="status disconnected">Disconnected</div>
+        <div id="connection-status" class="status disconnected">Initializing...</div>
         
         <div id="reader"></div>
         
         <p>Last Scanned:</p>
         <div id="last-scanned" class="scanned-data">-</div>
+        
+        <div id="info-message" class="info" style="display: none;"></div>
     </div>
     <script>
         const statusDiv = document.getElementById('connection-status');
         const lastScannedDiv = document.getElementById('last-scanned');
+        const infoDiv = document.getElementById('info-message');
         let socket;
         let isScanning = true;
+        let html5QrcodeScanner;
 
         // Get IP from URL Parameters (passed via QR code)
         const urlParams = new URLSearchParams(window.location.search);
@@ -39,7 +45,8 @@
 
         function connectWebSocket() {
             if (!pcIp) {
-                statusDiv.innerText = "Error: No IP found in QR";
+                statusDiv.innerText = "⚠️ No PC Connected (Scan QR to connect)";
+                statusDiv.className = "status warning";
                 return;
             }
 
@@ -48,6 +55,7 @@
             socket.onopen = () => {
                 statusDiv.innerText = "🟢 Connected to PC";
                 statusDiv.className = "status connected";
+                infoDiv.style.display = 'none';
             };
 
             socket.onclose = () => {
@@ -68,22 +76,63 @@
             isScanning = false;
             lastScannedDiv.innerText = decodedText;
 
+            // Send to WebSocket if connected
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(decodedText);
+            } else {
+                // Show message if not connected to PC
+                infoDiv.innerText = "Scanned: " + decodedText + " (Not sent - no PC connection)";
+                infoDiv.style.display = 'block';
+            }
+
+            // Visual/audio feedback
+            if (navigator.vibrate) {
+                navigator.vibrate(200);
             }
 
             setTimeout(() => { isScanning = true; }, 1500);
         }
 
-        // Initialize
+        function onScanError(error) {
+            // Ignore scan errors (they happen constantly while searching for codes)
+            // console.warn(`Scan error: ${error}`);
+        }
+
+        // Initialize scanner immediately
+        function initScanner() {
+            try {
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader", 
+                    { 
+                        fps: 10, 
+                        qrbox: { width: 250, height: 250 },
+                        rememberLastUsedCamera: true,
+                        supportedScanTypes: [
+                            Html5QrcodeScanType.SCAN_TYPE_CAMERA
+                        ]
+                    }
+                );
+                
+                html5QrcodeScanner.render(onScanSuccess, onScanError);
+                
+                statusDiv.innerText = pcIp ? "Connecting to PC..." : "⚠️ Scanner Ready (No PC connection)";
+                statusDiv.className = pcIp ? "status disconnected" : "status warning";
+                
+            } catch (error) {
+                console.error("Scanner initialization error:", error);
+                statusDiv.innerText = "❌ Scanner Error: " + error.message;
+                statusDiv.className = "status disconnected";
+            }
+        }
+
+        // Start everything
+        initScanner();
+        
         if (pcIp) {
             connectWebSocket();
-            const html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader", { fps: 10, qrbox: 250 }
-            );
-            html5QrcodeScanner.render(onScanSuccess);
         } else {
-            statusDiv.innerText = "Scan the QR code on your PC app to start.";
+            infoDiv.innerText = "Scanner will work offline. Scan QR code with PC IP to enable sync.";
+            infoDiv.style.display = 'block';
         }
     </script>
 </body>
