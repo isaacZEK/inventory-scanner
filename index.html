@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Scanner Node</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: white; }
+        #reader { width: 100%; max-width: 500px; margin: auto; border-radius: 10px; overflow: hidden; }
+        .status { padding: 10px; margin: 10px; border-radius: 5px; }
+        .online { background: #28a745; }
+        .offline { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <h2>Inventory Bridge</h2>
+    <div id="status" class="status offline">Connecting to PC...</div>
+    <div id="reader"></div>
+    <div id="result" style="margin-top: 20px; font-size: 1.2rem;"></div>
+
+    <script>
+        // 1. Get IP from URL params (e.g., scanner.html?ip=192.168.1.5)
+        const urlParams = new URLSearchParams(window.location.search);
+        const pcIp = urlParams.get('ip') || "localhost";
+        let socket;
+
+        function connect() {
+            socket = new WebSocket(`ws://${pcIp}:8765`);
+            
+            socket.onopen = () => {
+                document.getElementById('status').innerText = "Connected to PC";
+                document.getElementById('status').className = "status online";
+            };
+
+            socket.onclose = () => {
+                document.getElementById('status').innerText = "Disconnected. Retrying...";
+                document.getElementById('status').className = "status offline";
+                setTimeout(connect, 2000); // Auto-reconnect logic
+            };
+        }
+
+        // 2. Start Scanner
+        const html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: { width: 250, height: 150 } },
+            (decodedText) => {
+                document.getElementById('result').innerText = "Scanned: " + decodedText;
+                if(socket.readyState === WebSocket.OPEN) {
+                    socket.send(decodedText); // Send to CustomTkinter
+                    vibratePhone();
+                }
+            }
+        );
+
+        function vibratePhone() {
+            if (navigator.vibrate) navigator.vibrate(100);
+        }
+
+        connect();
+    </script>
+</body>
+</html>
