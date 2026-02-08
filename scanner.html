@@ -1,4 +1,192 @@
 <!DOCTYPE html>
+<html>
+<head>
+    <title>TOA Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; text-align: center; }
+        #status { padding: 10px; margin: 10px; border-radius: 5px; }
+        .connected { background: #4CAF50; color: white; }
+        .disconnected { background: #f44336; color: white; }
+        video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius: 10px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>📱 TOA Barcode Scanner</h1>
+    
+    <div id="status" class="disconnected">Disconnected</div>
+    
+    <div id="connectionInfo">
+        <p>Connecting to: <span id="serverInfo">...</span></p>
+    </div>
+    
+    <button onclick="startScanner()" id="startBtn">▶ Start Camera</button>
+    <button onclick="stopScanner()" id="stopBtn" disabled>⏹ Stop</button>
+    
+    <div id="cameraContainer" style="display: none;">
+        <video id="video" autoplay playsinline></video>
+        <p>Point camera at barcode</p>
+    </div>
+    
+    <div id="scannedList" style="margin-top: 20px; text-align: left;">
+        <h3>Recent Scans:</h3>
+        <div id="scans"></div>
+    </div>
+
+    <script>
+        // Get connection info from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const serverIP = urlParams.get('ip') || 'localhost';
+        const serverPort = urlParams.get('port') || '8765';
+        
+        let ws = null;
+        let scannerActive = false;
+        let scans = [];
+        
+        // Update display
+        document.getElementById('serverInfo').textContent = `${serverIP}:${serverPort}`;
+        
+        // Connect to WebSocket
+        function connectWebSocket() {
+            const wsUrl = `ws://${serverIP}:${serverPort}`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected to POS ✓';
+                console.log('Connected to WebSocket');
+            };
+            
+            ws.onmessage = (event) => {
+                console.log('Received:', event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.status === 'success') {
+                        addScan(data.barcode, data.product, true);
+                    } else {
+                        addScan(data.barcode, 'Not found', false);
+                    }
+                } catch (e) {
+                    console.log('Raw message:', event.data);
+                }
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Disconnected - Retrying...';
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        // Start camera scanner
+        function startScanner() {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                alert('Camera not supported');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            }).then(stream => {
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                // Show camera
+                document.getElementById('cameraContainer').style.display = 'block';
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                
+                // Initialize barcode scanner
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: video,
+                        constraints: { facingMode: "environment" }
+                    },
+                    decoder: {
+                        readers: ["ean_reader", "code_128_reader", "upc_reader"]
+                    }
+                }, (err) => {
+                    if (err) {
+                        alert('Scanner error: ' + err);
+                        return;
+                    }
+                    
+                    Quagga.start();
+                    scannerActive = true;
+                    
+                    Quagga.onDetected((result) => {
+                        const barcode = result.codeResult.code;
+                        console.log('Scanned:', barcode);
+                        
+                        // Send to WebSocket
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(barcode);
+                        }
+                        
+                        // Add to list immediately
+                        addScan(barcode, 'Processing...', null);
+                        
+                        // Visual feedback
+                        video.style.border = '3px solid #4CAF50';
+                        setTimeout(() => video.style.border = '', 500);
+                    });
+                });
+            }).catch(err => {
+                alert('Camera error: ' + err.message);
+            });
+        }
+        
+        function stopScanner() {
+            if (scannerActive) {
+                Quagga.stop();
+                scannerActive = false;
+                
+                // Hide camera
+                document.getElementById('cameraContainer').style.display = 'none';
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                
+                // Stop video stream
+                const video = document.getElementById('video');
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+            }
+        }
+        
+        function addScan(barcode, product, success) {
+            const time = new Date().toLocaleTimeString();
+            scans.unshift({ barcode, product, time, success });
+            
+            if (scans.length > 10) scans.pop();
+            
+            // Update display
+            const scansDiv = document.getElementById('scans');
+            scansDiv.innerHTML = scans.map(scan => `
+                <div style="padding: 10px; margin: 5px; background: ${getScanColor(scan.success)}; border-radius: 5px;">
+                    <div><strong>${scan.barcode}</strong></div>
+                    <div>${scan.product}</div>
+                    <div style="font-size: 12px; color: #666;">${scan.time}</div>
+                </div>
+            `).join('');
+        }
+        
+        function getScanColor(success) {
+            if (success === true) return '#d4edda';
+            if (success === false) return '#f8d7da';
+            return '#fff3cd';
+        }
+        
+        // Initialize connection
+        connectWebSocket();
+    </script>
+</body>
+</html>
+
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -735,7 +923,7 @@
 
 
 
-
+ -->
 
 
 
