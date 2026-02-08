@@ -1,330 +1,571 @@
+<!-- Save as inventory_scanner.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
+    <title>TOA Inventory Scanner</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TwinOne Scanner</title>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
-        body { 
-            font-family: sans-serif; 
-            background: #1a1a1a; 
-            color: white; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            margin: 0; 
-            padding: 20px; 
-            box-sizing: border-box; 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        .container { width: 100%; max-width: 400px; text-align: center; }
-        #reader { 
-            width: 100%; 
-            border-radius: 10px; 
-            overflow: hidden; 
-            background: #000; 
-            margin-bottom: 20px; 
-            min-height: 300px; 
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: white;
         }
-        .status { padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 1em; }
-        .connected { background: #10B981; color: white; }
-        .disconnected { background: #EF4444; color: white; }
-        .warning { background: #F59E0B; color: white; }
-        .info { background: #3B82F6; color: white; }
-        .scanned-data { 
-            font-size: 1.4em; 
-            color: #6366F1; 
-            margin-top: 10px; 
-            min-height: 2em; 
-            word-break: break-all; 
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        
+        .logo {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+        
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+        
+        .status-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 15px;
             padding: 15px;
-            background: rgba(99, 102, 241, 0.15);
-            border-radius: 8px;
-            border: 2px solid rgba(99, 102, 241, 0.3);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.3s ease;
         }
-        .scanned-data.pulse {
-            animation: pulse 0.5s ease-in-out;
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
         }
+        
+        .status-dot.connected {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+        
+        .status-text {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .camera-container {
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .scan-area {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 30%;
+            border: 3px solid #10b981;
+            border-radius: 10px;
+            animation: pulse 2s infinite;
+        }
+        
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); background: rgba(16, 185, 129, 0.3); }
+            0% { opacity: 0.7; }
+            50% { opacity: 1; }
+            100% { opacity: 0.7; }
         }
-        h2 { margin-bottom: 10px; font-size: 1.5em; }
-        p { color: #aaa; font-size: 0.9em; margin: 10px 0 5px 0; }
-        .info-box { 
-            background: rgba(59, 130, 246, 0.2); 
-            color: white; 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin-bottom: 15px; 
-            font-size: 0.9em;
-            border: 1px solid rgba(59, 130, 246, 0.5);
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
         }
-        .step { margin: 8px 0; text-align: left; }
-        .step-number { 
-            display: inline-block; 
-            background: white; 
-            color: #3B82F6; 
-            width: 24px; 
-            height: 24px; 
-            border-radius: 50%; 
-            text-align: center; 
-            line-height: 24px; 
-            font-weight: bold; 
-            margin-right: 8px; 
+        
+        .btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
-        .scan-count {
-            background: rgba(16, 185, 129, 0.2);
-            border: 1px solid rgba(16, 185, 129, 0.5);
-            color: #10B981;
-            padding: 8px 15px;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-size: 0.9em;
+        
+        .btn-primary {
+            background: #10b981;
+            color: white;
         }
-        .hidden { display: none; }
+        
+        .btn-primary:hover {
+            background: #0da271;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .scans-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .scans-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .scans-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        #scansList {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .scan-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .scan-barcode {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 5px;
+            color: #10b981;
+        }
+        
+        .scan-product {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .scan-time {
+            font-size: 12px;
+            opacity: 0.7;
+            text-align: right;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            animation: slideInRight 0.3s ease;
+            z-index: 1000;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .beep {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>📦 Inventory Scanner</h2>
-        
-        <div id="connection-status" class="status info">Ready to scan QR code</div>
-        
-        <div id="instructions" class="info-box">
-            <div class="step">
-                <span class="step-number">1</span>
-                Allow camera access when prompted
-            </div>
-            <div class="step">
-                <span class="step-number">2</span>
-                Point camera at QR code on your PC
-            </div>
-            <div class="step">
-                <span class="step-number">3</span>
-                Start scanning product barcodes
-            </div>
+        <div class="header">
+            <div class="logo">📱</div>
+            <h1>TOA Inventory Scanner</h1>
+            <div class="subtitle">Point camera at barcode to scan</div>
         </div>
         
-        <div id="reader"></div>
-        
-        <div id="scan-stats" class="scan-count hidden">
-            Scans sent: <span id="scan-count">0</span>
+        <div class="status-card">
+            <div class="status-dot" id="statusDot"></div>
+            <div class="status-text" id="statusText">Connecting to POS...</div>
         </div>
         
-        <p>Last Scanned:</p>
-        <div id="last-scanned" class="scanned-data">-</div>
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <div class="scan-area"></div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" id="startBtn" onclick="startScanner()">
+                <span>▶️</span> Start Scanning
+            </button>
+            <button class="btn btn-secondary" id="stopBtn" onclick="stopScanner()" disabled>
+                <span>⏸️</span> Stop
+            </button>
+        </div>
+        
+        <div class="scans-container">
+            <div class="scans-header">
+                <div class="scans-title">Recent Scans</div>
+                <button class="btn-secondary" style="padding: 8px 15px; font-size: 14px;" 
+                        onclick="clearScans()">Clear</button>
+            </div>
+            <div id="scansList"></div>
+        </div>
     </div>
     
+    <audio id="beepSuccess" class="beep">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="beepError" class="beep">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-notification-946.mp3" type="audio/mpeg">
+    </audio>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <script>
-        const statusDiv = document.getElementById('connection-status');
-        const lastScannedDiv = document.getElementById('last-scanned');
-        const instructionsDiv = document.getElementById('instructions');
-        const scanStatsDiv = document.getElementById('scan-stats');
-        const scanCountSpan = document.getElementById('scan-count');
+        // Configuration - Will be set from URL parameters
+        let config = {
+            wsUrl: null,
+            connected: false,
+            scannerActive: false,
+            recentScans: []
+        };
         
-        let socket;
-        let isScanning = true;
-        let html5QrcodeScanner;
-        let isConnectedToPc = false;
-        let scanCount = 0;
-
-        // Get IP from URL Parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        let pcIp = urlParams.get('ip');
-
-        function connectWebSocket(ip) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.close();
-            }
-
-            statusDiv.innerText = "🔄 Connecting to PC at " + ip + "...";
-            statusDiv.className = "status warning";
-
-            try {
-                socket = new WebSocket(`ws://${ip}:8765`);
-
-                socket.onopen = () => {
-                    statusDiv.innerText = "🟢 Connected to PC - Start scanning!";
-                    statusDiv.className = "status connected";
-                    isConnectedToPc = true;
-                    instructionsDiv.classList.add('hidden');
-                    scanStatsDiv.classList.remove('hidden');
-                    
-                    // Vibrate on successful connection
-                    if (navigator.vibrate) {
-                        navigator.vibrate([200, 100, 200]);
-                    }
-                };
-
-                socket.onclose = () => {
-                    statusDiv.innerText = "🔴 Disconnected - Reconnecting...";
-                    statusDiv.className = "status disconnected";
-                    isConnectedToPc = false;
-                    setTimeout(() => connectWebSocket(ip), 3000);
-                };
-
-                socket.onerror = (error) => {
-                    console.error("WebSocket Error:", error);
-                    statusDiv.innerText = "❌ Connection failed - Check PC app";
-                    statusDiv.className = "status disconnected";
-                };
-
-                socket.onmessage = (event) => {
-                    // Handle acknowledgment from server if needed
-                    console.log("Server response:", event.data);
-                };
-                
-            } catch (error) {
-                statusDiv.innerText = "❌ Connection error: " + error.message;
-                statusDiv.className = "status disconnected";
-            }
-        }
-
-        function onScanSuccess(decodedText, decodedResult) {
-            if (!isScanning) return;
-
-            isScanning = false;
-
-            // Check if this is a setup QR code (contains IP parameter)
-            if (decodedText.includes('?ip=') || decodedText.match(/\d+\.\d+\.\d+\.\d+/)) {
-                handleSetupQR(decodedText);
-            } else if (isConnectedToPc) {
-                // This is a product barcode - send to PC
-                handleBarcodeScanning(decodedText);
-            } else {
-                // Scanned a barcode but not connected
-                lastScannedDiv.innerText = decodedText;
-                statusDiv.innerText = "⚠️ Scan QR code on PC first to connect";
-                statusDiv.className = "status warning";
-            }
-
-            setTimeout(() => { isScanning = true; }, 1500);
-        }
-
-        function handleSetupQR(qrText) {
-            // Extract IP from QR code
-            let ip = null;
-            const ipMatch = qrText.match(/ip=([0-9.]+)/);
-            if (ipMatch) {
-                ip = ipMatch[1];
-            } else {
-                // Try to extract raw IP
-                const rawIpMatch = qrText.match(/(\d+\.\d+\.\d+\.\d+)/);
-                if (rawIpMatch) {
-                    ip = rawIpMatch[1];
-                }
-            }
-
-            if (ip) {
-                pcIp = ip;
-                lastScannedDiv.innerText = "✅ QR Code: " + ip;
-                lastScannedDiv.classList.add('pulse');
-                setTimeout(() => lastScannedDiv.classList.remove('pulse'), 500);
-                
-                statusDiv.innerText = "✅ QR Scanned! Connecting to PC...";
-                statusDiv.className = "status info";
-                
-                // Vibrate for confirmation
-                if (navigator.vibrate) {
-                    navigator.vibrate([100, 50, 100, 50, 100]);
-                }
-                
-                // Connect after brief delay
-                setTimeout(() => {
-                    connectWebSocket(pcIp);
-                }, 1000);
-            } else {
-                statusDiv.innerText = "❌ Invalid QR code - no IP found";
-                statusDiv.className = "status disconnected";
-            }
-        }
-
-        function handleBarcodeScanning(barcode) {
-            lastScannedDiv.innerText = barcode;
-            lastScannedDiv.classList.add('pulse');
-            setTimeout(() => lastScannedDiv.classList.remove('pulse'), 500);
-
-            // Send to WebSocket
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(barcode);
-                scanCount++;
-                scanCountSpan.innerText = scanCount;
-                
-                // Visual feedback
-                statusDiv.innerText = "✅ Sent to PC: " + barcode;
-                statusDiv.className = "status connected";
-                
-                // Vibrate on successful scan
-                if (navigator.vibrate) {
-                    navigator.vibrate(100);
-                }
-                
-                // Reset status message after 2 seconds
-                setTimeout(() => {
-                    if (isConnectedToPc) {
-                        statusDiv.innerText = "🟢 Connected to PC - Ready for next scan";
-                        statusDiv.className = "status connected";
-                    }
-                }, 2000);
-            } else {
-                statusDiv.innerText = "❌ Not connected - reconnecting...";
-                statusDiv.className = "status disconnected";
-                connectWebSocket(pcIp);
-            }
-        }
-
-        function onScanError(error) {
-            // Suppress frequent scanning errors
-        }
-
-        // Initialize scanner immediately
-        function initScanner() {
-            statusDiv.innerText = "📸 Requesting camera access...";
-            statusDiv.className = "status info";
+        // DOM Elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const scansList = document.getElementById('scansList');
+        const beepSuccess = document.getElementById('beepSuccess');
+        const beepError = document.getElementById('beepError');
+        
+        // Initialize from URL parameters
+        function initFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const ip = urlParams.get('ip') || localStorage.getItem('lastIP') || '192.168.1.100';
+            const port = urlParams.get('port') || localStorage.getItem('lastPort') || '8765';
             
-            try {
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "reader", 
-                    { 
-                        fps: 10, 
-                        qrbox: { width: 250, height: 250 },
-                        rememberLastUsedCamera: true,
-                        aspectRatio: 1.0,
-                        showTorchButtonIfSupported: true
-                    }
-                );
-                
-                html5QrcodeScanner.render(onScanSuccess, onScanError);
-                
-                // If IP already in URL, auto-connect
-                if (pcIp) {
-                    setTimeout(() => {
-                        connectWebSocket(pcIp);
-                    }, 1000);
-                } else {
-                    statusDiv.innerText = "📷 Camera ready - Scan QR code on PC";
-                    statusDiv.className = "status info";
+            config.wsUrl = `ws://${ip}:${port}`;
+            
+            // Save for next time
+            localStorage.setItem('lastIP', ip);
+            localStorage.setItem('lastPort', port);
+            
+            connectWebSocket();
+        }
+        
+        // WebSocket Connection
+        let ws = null;
+        function connectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+            
+            updateStatus('Connecting to POS...', 'yellow');
+            
+            ws = new WebSocket(config.wsUrl);
+            
+            ws.onopen = () => {
+                config.connected = true;
+                updateStatus('Connected ✓', 'green');
+                showNotification('Connected to POS system');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleScanResponse(data);
+                } catch (e) {
+                    console.log('Message:', event.data);
                 }
-                
-            } catch (error) {
-                console.error("Scanner initialization error:", error);
-                statusDiv.innerText = "❌ Error: " + error.message;
-                statusDiv.className = "status disconnected";
+            };
+            
+            ws.onclose = () => {
+                config.connected = false;
+                updateStatus('Disconnected ✗', 'red');
+                setTimeout(connectWebSocket, 3000); // Reconnect after 3 seconds
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Connection failed', 'red');
+            };
+        }
+        
+        // Status updates
+        function updateStatus(text, color) {
+            statusText.textContent = text;
+            statusDot.className = 'status-dot';
+            if (color === 'green') {
+                statusDot.classList.add('connected');
             }
         }
-
-        // Start scanner on page load
-        window.addEventListener('load', () => {
-            initScanner();
-        });
+        
+        // Scanner functions
+        function startScanner() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Camera not supported on this device');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            }).then(stream => {
+                video.srcObject = stream;
+                
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: video,
+                        constraints: {
+                            facingMode: "environment"
+                        }
+                    },
+                    decoder: {
+                        readers: [
+                            "ean_reader",
+                            "ean_8_reader",
+                            "code_128_reader",
+                            "upc_reader",
+                            "upc_e_reader",
+                            "code_39_reader"
+                        ]
+                    },
+                    locate: true,
+                    frequency: 10
+                }, err => {
+                    if (err) {
+                        console.error(err);
+                        alert('Scanner initialization failed: ' + err);
+                        return;
+                    }
+                    
+                    Quagga.start();
+                    config.scannerActive = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    updateStatus('Scanning...', 'green');
+                });
+                
+                Quagga.onDetected(result => {
+                    const code = result.codeResult.code;
+                    handleBarcodeDetected(code);
+                    
+                    // Brief pause to prevent duplicates
+                    Quagga.stop();
+                    setTimeout(() => {
+                        if (config.scannerActive) Quagga.start();
+                    }, 500);
+                });
+                
+            }).catch(err => {
+                alert('Camera error: ' + err.message);
+                console.error(err);
+            });
+        }
+        
+        function stopScanner() {
+            if (config.scannerActive) {
+                Quagga.stop();
+                config.scannerActive = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                updateStatus('Ready', 'green');
+                
+                // Stop video stream
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+            }
+        }
+        
+        // Barcode handling
+        function handleBarcodeDetected(barcode) {
+            console.log('Detected:', barcode);
+            
+            // Add to recent scans immediately
+            addToScanList({
+                barcode: barcode,
+                product: 'Processing...',
+                time: new Date().toLocaleTimeString()
+            });
+            
+            // Send to POS
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(barcode);
+                playBeep('success');
+            } else {
+                showNotification('Not connected to POS', 'error');
+                playBeep('error');
+            }
+        }
+        
+        function handleScanResponse(data) {
+            const scan = config.recentScans.find(s => s.barcode === data.barcode);
+            if (scan) {
+                if (data.status === 'success') {
+                    scan.product = `${data.product} - $${data.price}`;
+                    scan.success = true;
+                    showNotification(`Scanned: ${data.product}`);
+                } else {
+                    scan.product = 'Product not found';
+                    scan.success = false;
+                    showNotification('Product not found', 'error');
+                }
+                updateScansList();
+            }
+        }
+        
+        // UI updates
+        function addToScanList(scan) {
+            config.recentScans.unshift(scan);
+            if (config.recentScans.length > 20) {
+                config.recentScans.pop();
+            }
+            updateScansList();
+        }
+        
+        function updateScansList() {
+            scansList.innerHTML = '';
+            config.recentScans.forEach(scan => {
+                const item = document.createElement('div');
+                item.className = 'scan-item';
+                item.innerHTML = `
+                    <div class="scan-barcode">${scan.barcode}</div>
+                    <div class="scan-product" style="color: ${scan.success === false ? '#ef4444' : scan.success ? '#10b981' : 'white'}">
+                        ${scan.product}
+                    </div>
+                    <div class="scan-time">${scan.time}</div>
+                `;
+                scansList.appendChild(item);
+            });
+        }
+        
+        function clearScans() {
+            config.recentScans = [];
+            updateScansList();
+        }
+        
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            notification.style.background = type === 'error' ? '#ef4444' : '#10b981';
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+        
+        function playBeep(type) {
+            try {
+                if (type === 'success') {
+                    beepSuccess.currentTime = 0;
+                    beepSuccess.play();
+                } else {
+                    beepError.currentTime = 0;
+                    beepError.play();
+                }
+            } catch (e) {
+                // Audio not critical
+            }
+        }
+        
+        // Initialize
+        window.onload = initFromUrl;
+        
+        // Auto-start scanner (optional)
+        // setTimeout(startScanner, 1000);
     </script>
 </body>
 </html>
-
-
 
 
 <!-- <!DOCTYPE html>
