@@ -3,6 +3,622 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOA Inventory Scanner</title>
+    <style>
+        :root {
+            --primary: #6366F1;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .status-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+        
+        .status-dot.connected {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+        
+        .camera-container {
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .scan-box {
+            width: 70%;
+            height: 30%;
+            border: 3px solid var(--success);
+            border-radius: 10px;
+            animation: pulse 2s infinite;
+            position: relative;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.7; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { opacity: 1; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { opacity: 0.7; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--success);
+            animation: scan 2s linear infinite;
+        }
+        
+        @keyframes scan {
+            0% { top: 0; }
+            50% { top: 97%; }
+            100% { top: 0; }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0da271;
+            transform: translateY(-2px);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .scans-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+        }
+        
+        .scans-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        #scansList {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .scan-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .scan-barcode {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .scan-product {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .scan-time {
+            font-size: 12px;
+            opacity: 0.7;
+            text-align: right;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--success);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            animation: slideInRight 0.3s ease;
+            z-index: 1000;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .beep {
+            display: none;
+        }
+        
+        /* Custom scrollbar */
+        #scansList::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #scansList::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        #scansList::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">📱</div>
+            <h1>TOA Inventory Scanner</h1>
+            <div class="subtitle">Point camera at barcode to scan</div>
+        </div>
+        
+        <div class="status-card">
+            <div class="status-dot" id="statusDot"></div>
+            <div class="status-text" id="statusText">Connecting to POS...</div>
+        </div>
+        
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <div class="scan-overlay">
+                <div class="scan-box">
+                    <div class="scan-line"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn-primary" id="startBtn" onclick="startScanner()">
+                <span>▶️</span> Start Scanning
+            </button>
+            <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" disabled>
+                <span>⏸️</span> Stop
+            </button>
+        </div>
+        
+        <div class="scans-container">
+            <div class="scans-header">
+                <h3>Recent Scans</h3>
+                <button class="btn-secondary" style="padding: 8px 15px; font-size: 14px;" 
+                        onclick="clearScans()">Clear</button>
+            </div>
+            <div id="scansList"></div>
+        </div>
+    </div>
+    
+    <audio id="beepSuccess" class="beep">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="beepError" class="beep">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-notification-946.mp3" type="audio/mpeg">
+    </audio>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <script>
+        // Configuration
+        let config = {
+            ws: null,
+            connected: false,
+            scannerActive: false,
+            scans: [],
+            serverIP: null,
+            serverPort: null
+        };
+        
+        // DOM Elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const scansList = document.getElementById('scansList');
+        const beepSuccess = document.getElementById('beepSuccess');
+        const beepError = document.getElementById('beepError');
+        
+        // Initialize from URL parameters
+        function initFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            config.serverIP = urlParams.get('ip') || localStorage.getItem('lastIP') || '192.168.1.100';
+            config.serverPort = urlParams.get('port') || localStorage.getItem('lastPort') || '8765';
+            
+            // Save for next time
+            localStorage.setItem('lastIP', config.serverIP);
+            localStorage.setItem('lastPort', config.serverPort);
+            
+            connectWebSocket();
+        }
+        
+        // WebSocket Connection
+        function connectWebSocket() {
+            if (config.ws) {
+                config.ws.close();
+            }
+            
+            updateStatus('Connecting to POS...', 'yellow');
+            
+            const wsUrl = `ws://${config.serverIP}:${config.serverPort}`;
+            config.ws = new WebSocket(wsUrl);
+            
+            config.ws.onopen = () => {
+                config.connected = true;
+                updateStatus('Connected ✓', 'green');
+                showNotification('Connected to POS system');
+            };
+            
+            config.ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleScanResponse(data);
+                } catch (e) {
+                    console.log('Server response:', event.data);
+                }
+            };
+            
+            config.ws.onclose = () => {
+                config.connected = false;
+                updateStatus('Disconnected ✗', 'red');
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            config.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Connection failed', 'red');
+            };
+        }
+        
+        // Status updates
+        function updateStatus(text, color) {
+            statusText.textContent = text;
+            statusDot.className = 'status-dot';
+            if (color === 'green') {
+                statusDot.classList.add('connected');
+            }
+        }
+        
+        // Scanner functions
+        function startScanner() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Camera not supported on this device');
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            }).then(stream => {
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: video,
+                        constraints: {
+                            facingMode: "environment"
+                        }
+                    },
+                    decoder: {
+                        readers: [
+                            "ean_reader",
+                            "ean_8_reader",
+                            "code_128_reader",
+                            "upc_reader",
+                            "upc_e_reader",
+                            "code_39_reader"
+                        ]
+                    },
+                    locate: true,
+                    frequency: 10
+                }, err => {
+                    if (err) {
+                        console.error(err);
+                        alert('Scanner initialization failed: ' + err);
+                        return;
+                    }
+                    
+                    Quagga.start();
+                    config.scannerActive = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    updateStatus('Scanning...', 'green');
+                });
+                
+                Quagga.onDetected(result => {
+                    const code = result.codeResult.code;
+                    handleBarcodeDetected(code);
+                    
+                    // Brief pause to prevent duplicates
+                    Quagga.stop();
+                    setTimeout(() => {
+                        if (config.scannerActive) Quagga.start();
+                    }, 500);
+                });
+                
+            }).catch(err => {
+                alert('Camera error: ' + err.message);
+                console.error(err);
+            });
+        }
+        
+        function stopScanner() {
+            if (config.scannerActive) {
+                Quagga.stop();
+                config.scannerActive = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                updateStatus('Ready', 'green');
+                
+                // Stop video stream
+                const video = document.getElementById('video');
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+            }
+        }
+        
+        // Barcode handling
+        function handleBarcodeDetected(barcode) {
+            console.log('Detected:', barcode);
+            
+            // Add to recent scans immediately
+            addToScanList({
+                barcode: barcode,
+                product: 'Processing...',
+                time: new Date().toLocaleTimeString(),
+                status: 'processing'
+            });
+            
+            // Send to POS
+            if (config.ws && config.ws.readyState === WebSocket.OPEN) {
+                config.ws.send(barcode);
+                playBeep('success');
+            } else {
+                showNotification('Not connected to POS', 'error');
+                playBeep('error');
+            }
+        }
+        
+        function handleScanResponse(data) {
+            const scan = config.scans.find(s => s.barcode === data.barcode);
+            if (scan) {
+                scan.status = data.status;
+                
+                if (data.status === 'success') {
+                    scan.product = `${data.product} - $${data.price}`;
+                    scan.success = true;
+                    showNotification(`Scanned: ${data.product}`);
+                } else {
+                    scan.product = 'Product not found';
+                    scan.success = false;
+                    showNotification('Product not found', 'error');
+                }
+                
+                updateScansList();
+            }
+        }
+        
+        // UI updates
+        function addToScanList(scan) {
+            config.scans.unshift(scan);
+            if (config.scans.length > 10) {
+                config.scans.pop();
+            }
+            updateScansList();
+        }
+        
+        function updateScansList() {
+            scansList.innerHTML = '';
+            config.scans.forEach(scan => {
+                const item = document.createElement('div');
+                item.className = 'scan-item';
+                
+                const statusColor = scan.status === 'success' ? '#10B981' : 
+                                  scan.status === 'error' ? '#EF4444' : '#F59E0B';
+                
+                item.innerHTML = `
+                    <div class="scan-barcode" style="color: ${statusColor}">${scan.barcode}</div>
+                    <div class="scan-product">${scan.product}</div>
+                    <div class="scan-time">${scan.time}</div>
+                `;
+                scansList.appendChild(item);
+            });
+        }
+        
+        function clearScans() {
+            config.scans = [];
+            updateScansList();
+        }
+        
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            notification.style.background = type === 'error' ? '#EF4444' : 
+                                          type === 'warning' ? '#F59E0B' : '#10B981';
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+        
+        function playBeep(type) {
+            try {
+                if (type === 'success') {
+                    beepSuccess.currentTime = 0;
+                    beepSuccess.play();
+                } else {
+                    beepError.currentTime = 0;
+                    beepError.play();
+                }
+            } catch (e) {
+                // Audio not critical
+            }
+        }
+        
+        // Auto-start on page load (optional)
+        window.onload = initFromUrl;
+        
+        // Auto-start scanner after connection (optional)
+        // setTimeout(() => {
+        //     if (config.connected) {
+        //         startScanner();
+        //     }
+        // }, 1000);
+    </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TOA Barcode Scanner</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -251,7 +867,7 @@
     </script>
 </body>
 </html>
-
+ -->
 
 
 
