@@ -433,7 +433,7 @@
                 
                 // Redirect to scanner page
                 setTimeout(() => {
-                    window.location.href = `/scanner.html?ip=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}`;
+                    window.location.href = `scanner.html?ip=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}`;
                 }, 1500);
             } else {
                 document.getElementById('statusMessage').className = 'status error';
@@ -489,7 +489,7 @@
             saveConnection(ip, port);
             
             setTimeout(() => {
-                window.location.href = `/scanner.html?ip=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}`;
+                window.location.href = `scanner.html?ip=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}`;
             }, 1000);
         }
         
