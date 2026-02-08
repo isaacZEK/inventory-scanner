@@ -4,12 +4,126 @@
     <title>TOA Scanner</title>
     <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <style>
-        body { font-family: Arial; padding: 20px; text-align: center; }
-        #status { padding: 10px; margin: 10px; border-radius: 5px; }
+        body { 
+            font-family: Arial; 
+            padding: 20px; 
+            text-align: center; 
+            background: #f5f5f5;
+        }
+        
+        #status { 
+            padding: 10px; 
+            margin: 10px; 
+            border-radius: 5px; 
+            font-weight: bold;
+        }
+        
         .connected { background: #4CAF50; color: white; }
         .disconnected { background: #f44336; color: white; }
-        video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius: 10px; }
-        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+        
+        video { 
+            width: 100%; 
+            max-width: 400px; 
+            border: 2px solid #ccc; 
+            border-radius: 10px; 
+        }
+        
+        button { 
+            padding: 10px 20px; 
+            margin: 10px; 
+            font-size: 16px; 
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #startBtn {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        #stopBtn {
+            background: #f44336;
+            color: white;
+        }
+        
+        /* Modal Overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+        }
+        
+        /* Modal Content */
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-content h2 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 24px;
+        }
+        
+        .modal-content input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            text-align: center;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+        
+        .modal-content input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .modal-buttons button {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            border-radius: 8px;
+            margin: 0;
+        }
+        
+        .btn-submit {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-cancel {
+            background: #f44336;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -23,15 +137,33 @@
     
     <button onclick="startScanner()" id="startBtn">▶ Start Camera</button>
     <button onclick="stopScanner()" id="stopBtn" disabled>⏹ Stop</button>
+    <button onclick="manualBarcodeEntry()">⌨️ Manual Entry</button>
     
     <div id="cameraContainer" style="display: none;">
         <video id="video" autoplay playsinline></video>
         <p>Point camera at barcode</p>
     </div>
     
-    <div id="scannedList" style="margin-top: 20px; text-align: left;">
+    <div id="scannedList" style="margin-top: 20px; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto;">
         <h3>Recent Scans:</h3>
         <div id="scans"></div>
+    </div>
+
+    <!-- Manual Entry Modal -->
+    <div id="manualModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>Enter Barcode</h2>
+            <input 
+                type="text" 
+                id="manualBarcode" 
+                placeholder="123456789012"
+                inputmode="numeric"
+            >
+            <div class="modal-buttons">
+                <button class="btn-submit" onclick="submitManualBarcode()">Submit</button>
+                <button class="btn-cancel" onclick="closeManual()">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -53,7 +185,7 @@
             ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {
-                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').className = 'connected';
                 document.getElementById('status').textContent = 'Connected to POS ✓';
                 console.log('Connected to WebSocket');
             };
@@ -73,7 +205,7 @@
             };
             
             ws.onclose = () => {
-                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').className = 'disconnected';
                 document.getElementById('status').textContent = 'Disconnected - Retrying...';
                 setTimeout(connectWebSocket, 3000);
             };
@@ -131,7 +263,7 @@
                         
                         // Visual feedback
                         video.style.border = '3px solid #4CAF50';
-                        setTimeout(() => video.style.border = '', 500);
+                        setTimeout(() => video.style.border = '2px solid #ccc', 500);
                     });
                 });
             }).catch(err => {
@@ -157,6 +289,35 @@
             }
         }
         
+        // Manual entry functions
+        function manualBarcodeEntry() {
+            const modal = document.getElementById('manualModal');
+            modal.classList.add('active');
+            document.getElementById('manualBarcode').focus();
+        }
+        
+        function submitManualBarcode() {
+            const barcode = document.getElementById('manualBarcode').value.trim();
+            if (barcode) {
+                // Send to WebSocket
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(barcode);
+                    addScan(barcode, 'Processing...', null);
+                } else {
+                    alert('Not connected to POS');
+                }
+                closeManual();
+            } else {
+                alert('Please enter a barcode');
+            }
+        }
+        
+        function closeManual() {
+            const modal = document.getElementById('manualModal');
+            modal.classList.remove('active');
+            document.getElementById('manualBarcode').value = '';
+        }
+        
         function addScan(barcode, product, success) {
             const time = new Date().toLocaleTimeString();
             scans.unshift({ barcode, product, time, success });
@@ -180,1581 +341,17 @@
             return '#fff3cd';
         }
         
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeManual();
+            } else if (e.key === 'Enter' && document.getElementById('manualModal').classList.contains('active')) {
+                submitManualBarcode();
+            }
+        });
+        
         // Initialize connection
         connectWebSocket();
     </script>
 </body>
 </html>
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TOA Mobile Scanner</title>
-    <style>
-        :root {
-            --primary: #6366F1;
-            --success: #10B981;
-            --danger: #EF4444;
-            --warning: #F59E0B;
-            --bg-dark: #1E293B;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: white;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 25px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 25px;
-        }
-        
-        .logo {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-        
-        h1 {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-        
-        .subtitle {
-            font-size: 14px;
-            opacity: 0.9;
-            margin-bottom: 10px;
-        }
-        
-        .connection-info {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 10px;
-            padding: 10px;
-            font-size: 12px;
-            margin-bottom: 15px;
-            font-family: monospace;
-        }
-        
-        .status-card {
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 15px;
-            padding: 15px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: var(--danger);
-        }
-        
-        .status-dot.connected {
-            background: var(--success);
-            box-shadow: 0 0 10px var(--success);
-        }
-        
-        .status-dot.scanning {
-            background: var(--primary);
-            box-shadow: 0 0 10px var(--primary);
-        }
-        
-        .qr-section {
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        .qr-placeholder {
-            width: 200px;
-            height: 200px;
-            background: #f0f0f0;
-            margin: 0 auto 15px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #666;
-            font-size: 14px;
-        }
-        
-        .manual-connect {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .input-group {
-            margin-bottom: 10px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-size: 14px;
-            opacity: 0.9;
-        }
-        
-        input {
-            width: 100%;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            font-size: 14px;
-        }
-        
-        input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-        }
-        
-        button {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        
-        .btn-primary {
-            background: var(--success);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #0da271;
-            transform: translateY(-2px);
-        }
-        
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-        
-        .scans-container {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-        
-        .scans-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        #scansList {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
-        .scan-item {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 10px;
-            animation: slideIn 0.3s ease;
-        }
-        
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .scan-barcode {
-            font-weight: 600;
-            font-size: 16px;
-            margin-bottom: 5px;
-            color: white;
-        }
-        
-        .scan-product {
-            font-size: 14px;
-            opacity: 0.9;
-            margin-bottom: 5px;
-        }
-        
-        .scan-time {
-            font-size: 12px;
-            opacity: 0.7;
-            text-align: right;
-        }
-        
-        .success { color: #10B981; }
-        .error { color: #EF4444; }
-        .processing { color: #F59E0B; }
-        
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--success);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            animation: slideInRight 0.3s ease;
-            z-index: 1000;
-        }
-        
-        @keyframes slideInRight {
-            from { opacity: 0; transform: translateX(100px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        
-        .camera-container {
-            width: 100%;
-            aspect-ratio: 4/3;
-            background: #000;
-            border-radius: 15px;
-            overflow: hidden;
-            margin-bottom: 20px;
-            position: relative;
-        }
-        
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">📱</div>
-            <h1>TOA Mobile Scanner</h1>
-            <div class="subtitle">Connect to your POS system</div>
-        </div>
-        
-        <div class="status-card">
-            <div class="status-dot" id="statusDot"></div>
-            <div class="status-text" id="statusText">Waiting for connection...</div>
-        </div>
-        
-        <div id="qrSection" class="qr-section">
-            <div class="qr-placeholder" id="qrPlaceholder">
-                QR Code will appear when server starts
-            </div>
-            <p style="color: #666; margin-bottom: 10px;">Scan this QR code with your phone</p>
-            <div class="connection-info" id="connectionInfo">
-                IP: --.--.--.-- | Port: ----
-            </div>
-        </div>
-        
-        <div class="manual-connect">
-            <h3 style="margin-bottom: 15px;">Manual Connection</h3>
-            <div class="input-group">
-                <label for="ipInput">Server IP:</label>
-                <input type="text" id="ipInput" placeholder="192.168.1.100">
-            </div>
-            <div class="input-group">
-                <label for="portInput">Port:</label>
-                <input type="text" id="portInput" placeholder="8765" value="8765">
-            </div>
-            <button class="btn-secondary" onclick="manualConnect()">
-                🔗 Connect Manually
-            </button>
-        </div>
-        
-        <button class="btn-primary" id="startScanBtn" onclick="startCameraScanner()" disabled>
-            📷 Start Camera Scanner
-        </button>
-        
-        <button class="btn-secondary" onclick="manualBarcodeEntry()">
-            ⌨️ Enter Barcode Manually
-        </button>
-        
-        <div class="scans-container">
-            <div class="scans-header">
-                <h3>Recent Scans</h3>
-                <button class="btn-secondary" style="padding: 8px 15px; font-size: 14px;" 
-                        onclick="clearScans()">Clear</button>
-            </div>
-            <div id="scansList">
-                <div class="scan-item">
-                    <div class="scan-barcode">No scans yet</div>
-                    <div class="scan-product">Connect and start scanning</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Camera Modal -->
-    <div id="cameraModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-        <div style="width: 100%; max-width: 500px; padding: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="color: white;">Camera Scanner</h2>
-                <button onclick="closeCamera()" style="background: #EF4444; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer;">✕ Close</button>
-            </div>
-            
-            <div class="camera-container">
-                <video id="video" autoplay playsinline></video>
-            </div>
-            
-            <div style="color: white; text-align: center; margin-top: 20px;">
-                <p>Point camera at barcode to scan</p>
-                <p style="font-size: 12px; opacity: 0.7;">Make sure barcode is well lit</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Manual Entry Modal -->
-    <div id="manualModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: flex; align-items: center; justify-content: center;">
-        <div style="background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 400px;">
-            <h2 style="margin-bottom: 20px; color: #333;">Enter Barcode</h2>
-            <input type="text" id="manualBarcode" placeholder="123456789012" 
-                   style="width: 100%; padding: 15px; font-size: 18px; text-align: center; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 20px;">
-            <div style="display: flex; gap: 10px;">
-                <button onclick="submitManualBarcode()" style="flex: 1; padding: 15px; background: #10B981; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    Submit
-                </button>
-                <button onclick="closeManual()" style="flex: 1; padding: 15px; background: #EF4444; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Configuration
-        let ws = null;
-        let isConnected = false;
-        let serverIP = '';
-        let serverPort = '';
-        let scans = [];
-        
-        // Initialize from URL parameters
-        function init() {
-            const urlParams = new URLSearchParams(window.location.search);
-            serverIP = urlParams.get('ip') || localStorage.getItem('lastIP') || '';
-            serverPort = urlParams.get('port') || localStorage.getItem('lastPort') || '8765';
-            
-            // Update display
-            if (serverIP) {
-                document.getElementById('ipInput').value = serverIP;
-                document.getElementById('portInput').value = serverPort;
-                updateConnectionInfo();
-                connectWebSocket();
-            }
-            
-            // Load scans from localStorage
-            const savedScans = localStorage.getItem('toaScans');
-            if (savedScans) {
-                scans = JSON.parse(savedScans);
-                updateScansList();
-            }
-        }
-        
-        function updateConnectionInfo() {
-            document.getElementById('connectionInfo').textContent = 
-                `IP: ${serverIP} | Port: ${serverPort}`;
-        }
-        
-        function connectWebSocket() {
-            if (!serverIP) return;
-            
-            if (ws) {
-                ws.close();
-            }
-            
-            updateStatus('Connecting...', 'warning');
-            
-            const wsUrl = `ws://${serverIP}:${serverPort}`;
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                isConnected = true;
-                updateStatus('Connected to POS ✓', 'connected');
-                document.getElementById('startScanBtn').disabled = false;
-                showNotification('Connected to POS system');
-                
-                // Save connection info
-                localStorage.setItem('lastIP', serverIP);
-                localStorage.setItem('lastPort', serverPort);
-            };
-            
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    handleServerResponse(data);
-                } catch (e) {
-                    console.log('Raw response:', event.data);
-                }
-            };
-            
-            ws.onclose = () => {
-                isConnected = false;
-                updateStatus('Disconnected ✗', 'disconnected');
-                document.getElementById('startScanBtn').disabled = true;
-                
-                // Try to reconnect after 3 seconds
-                setTimeout(() => {
-                    if (!isConnected) {
-                        connectWebSocket();
-                    }
-                }, 3000);
-            };
-            
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                updateStatus('Connection failed', 'disconnected');
-            };
-        }
-        
-        function manualConnect() {
-            serverIP = document.getElementById('ipInput').value.trim();
-            serverPort = document.getElementById('portInput').value.trim();
-            
-            if (!serverIP) {
-                alert('Please enter server IP address');
-                return;
-            }
-            
-            updateConnectionInfo();
-            connectWebSocket();
-        }
-        
-        function updateStatus(text, state) {
-            const statusText = document.getElementById('statusText');
-            const statusDot = document.getElementById('statusDot');
-            
-            statusText.textContent = text;
-            statusDot.className = 'status-dot';
-            
-            if (state === 'connected') {
-                statusDot.classList.add('connected');
-            } else if (state === 'scanning') {
-                statusDot.classList.add('scanning');
-            }
-        }
-        
-        function handleServerResponse(data) {
-            console.log('Server response:', data);
-            
-            if (data.barcode) {
-                // Find the scan in our list
-                const scanIndex = scans.findIndex(s => s.barcode === data.barcode);
-                if (scanIndex !== -1) {
-                    if (data.status === 'success') {
-                        scans[scanIndex].status = 'success';
-                        scans[scanIndex].product = `${data.product} - $${data.price}`;
-                        showNotification(`Found: ${data.product}`);
-                    } else {
-                        scans[scanIndex].status = 'error';
-                        scans[scanIndex].product = 'Product not found';
-                        showNotification('Product not found', 'error');
-                    }
-                    
-                    updateScansList();
-                    saveScans();
-                }
-            }
-        }
-        
-        function sendBarcode(barcode) {
-            if (!isConnected || !ws) {
-                showNotification('Not connected to POS', 'error');
-                return false;
-            }
-            
-            if (ws.readyState === WebSocket.OPEN) {
-                // Add to scans immediately
-                addScan({
-                    barcode: barcode,
-                    product: 'Processing...',
-                    time: new Date().toLocaleTimeString(),
-                    status: 'processing'
-                });
-                
-                // Send to server
-                ws.send(barcode);
-                return true;
-            } else {
-                showNotification('Connection lost', 'error');
-                return false;
-            }
-        }
-        
-        function addScan(scan) {
-            scans.unshift(scan);
-            if (scans.length > 10) {
-                scans.pop();
-            }
-            updateScansList();
-            saveScans();
-        }
-        
-        function updateScansList() {
-            const list = document.getElementById('scansList');
-            
-            if (scans.length === 0) {
-                list.innerHTML = `
-                    <div class="scan-item">
-                        <div class="scan-barcode">No scans yet</div>
-                        <div class="scan-product">Connect and start scanning</div>
-                    </div>
-                `;
-                return;
-            }
-            
-            list.innerHTML = scans.map(scan => `
-                <div class="scan-item">
-                    <div class="scan-barcode ${scan.status}">${scan.barcode}</div>
-                    <div class="scan-product">${scan.product}</div>
-                    <div class="scan-time">${scan.time}</div>
-                </div>
-            `).join('');
-        }
-        
-        function clearScans() {
-            if (confirm('Clear all scan history?')) {
-                scans = [];
-                updateScansList();
-                localStorage.removeItem('toaScans');
-            }
-        }
-        
-        function saveScans() {
-            localStorage.setItem('toaScans', JSON.stringify(scans));
-        }
-        
-        function showNotification(message, type = 'success') {
-            // Remove existing notifications
-            const existing = document.querySelectorAll('.notification');
-            existing.forEach(n => n.remove());
-            
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.textContent = message;
-            notification.style.background = type === 'error' ? '#EF4444' : '#10B981';
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.remove();
-                }
-            }, 3000);
-        }
-        
-        // Camera scanner functions
-        function startCameraScanner() {
-            if (!isConnected) {
-                showNotification('Please connect to POS first', 'error');
-                return;
-            }
-            
-            document.getElementById('cameraModal').style.display = 'flex';
-            startCamera();
-        }
-        
-        function startCamera() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                showNotification('Camera not supported', 'error');
-                return;
-            }
-            
-            navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: "environment",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                } 
-            }).then(stream => {
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                
-                // Start barcode detection
-                detectBarcodes();
-            }).catch(err => {
-                console.error('Camera error:', err);
-                showNotification('Camera error: ' + err.message, 'error');
-            });
-        }
-        
-        function detectBarcodes() {
-            // Using QuaggaJS for barcode detection
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js';
-            script.onload = () => {
-                Quagga.init({
-                    inputStream: {
-                        name: "Live",
-                        type: "LiveStream",
-                        target: document.getElementById('video'),
-                        constraints: {
-                            facingMode: "environment"
-                        }
-                    },
-                    decoder: {
-                        readers: ["ean_reader", "code_128_reader", "upc_reader"]
-                    }
-                }, err => {
-                    if (err) {
-                        console.error(err);
-                        showNotification('Scanner failed to start', 'error');
-                        return;
-                    }
-                    
-                    Quagga.start();
-                    
-                    Quagga.onDetected(result => {
-                        const barcode = result.codeResult.code;
-                        if (sendBarcode(barcode)) {
-                            // Success feedback
-                            document.getElementById('video').style.border = '3px solid #10B981';
-                            setTimeout(() => {
-                                document.getElementById('video').style.border = 'none';
-                            }, 500);
-                        }
-                        
-                        // Pause briefly
-                        Quagga.stop();
-                        setTimeout(() => {
-                            Quagga.start();
-                        }, 1000);
-                    });
-                });
-            };
-            document.head.appendChild(script);
-        }
-        
-        function closeCamera() {
-            const modal = document.getElementById('cameraModal');
-            modal.style.display = 'none';
-            
-            // Stop camera
-            const video = document.getElementById('video');
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
-            
-            // Stop Quagga if running
-            if (typeof Quagga !== 'undefined') {
-                Quagga.stop();
-            }
-        }
-        
-        function manualBarcodeEntry() {
-            document.getElementById('manualModal').style.display = 'flex';
-            document.getElementById('manualBarcode').focus();
-        }
-        
-        function submitManualBarcode() {
-            const barcode = document.getElementById('manualBarcode').value.trim();
-            if (barcode) {
-                if (sendBarcode(barcode)) {
-                    closeManual();
-                }
-            } else {
-                alert('Please enter a barcode');
-            }
-        }
-        
-        function closeManual() {
-            document.getElementById('manualModal').style.display = 'none';
-            document.getElementById('manualBarcode').value = '';
-        }
-        
-        // Initialize on page load
-        window.addEventListener('load', init);
-        
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeCamera();
-                closeManual();
-            }
-        });
-    </script>
-</body>
-</html>
-
-
-
- -->
-
-
-
-
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TOA Inventory Scanner</title>
-    <style>
-        :root {
-            --primary: #6366F1;
-            --success: #10B981;
-            --danger: #EF4444;
-            --warning: #F59E0B;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: white;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 25px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 25px;
-        }
-        
-        .logo {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-        
-        h1 {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-        
-        .subtitle {
-            font-size: 14px;
-            opacity: 0.9;
-        }
-        
-        .status-card {
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 15px;
-            padding: 15px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: var(--danger);
-        }
-        
-        .status-dot.connected {
-            background: var(--success);
-            box-shadow: 0 0 10px var(--success);
-        }
-        
-        .camera-container {
-            width: 100%;
-            aspect-ratio: 4/3;
-            background: #000;
-            border-radius: 15px;
-            overflow: hidden;
-            margin-bottom: 20px;
-            position: relative;
-        }
-        
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .scan-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .scan-box {
-            width: 70%;
-            height: 30%;
-            border: 3px solid var(--success);
-            border-radius: 10px;
-            animation: pulse 2s infinite;
-            position: relative;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 0.7; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { opacity: 1; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-            100% { opacity: 0.7; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
-        
-        .scan-line {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: var(--success);
-            animation: scan 2s linear infinite;
-        }
-        
-        @keyframes scan {
-            0% { top: 0; }
-            50% { top: 97%; }
-            100% { top: 0; }
-        }
-        
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        
-        button {
-            flex: 1;
-            padding: 15px;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        
-        .btn-primary {
-            background: var(--success);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #0da271;
-            transform: translateY(-2px);
-        }
-        
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-        
-        .scans-container {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 20px;
-        }
-        
-        .scans-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        #scansList {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
-        .scan-item {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 10px;
-            animation: slideIn 0.3s ease;
-        }
-        
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .scan-barcode {
-            font-weight: 600;
-            font-size: 16px;
-            margin-bottom: 5px;
-        }
-        
-        .scan-product {
-            font-size: 14px;
-            opacity: 0.9;
-            margin-bottom: 5px;
-        }
-        
-        .scan-time {
-            font-size: 12px;
-            opacity: 0.7;
-            text-align: right;
-        }
-        
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--success);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            animation: slideInRight 0.3s ease;
-            z-index: 1000;
-        }
-        
-        @keyframes slideInRight {
-            from {
-                opacity: 0;
-                transform: translateX(100px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-        
-        .beep {
-            display: none;
-        }
-        
-        /* Custom scrollbar */
-        #scansList::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        #scansList::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-        }
-        
-        #scansList::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 3px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">📱</div>
-            <h1>TOA Inventory Scanner</h1>
-            <div class="subtitle">Point camera at barcode to scan</div>
-        </div>
-        
-        <div class="status-card">
-            <div class="status-dot" id="statusDot"></div>
-            <div class="status-text" id="statusText">Connecting to POS...</div>
-        </div>
-        
-        <div class="camera-container">
-            <video id="video" autoplay playsinline></video>
-            <div class="scan-overlay">
-                <div class="scan-box">
-                    <div class="scan-line"></div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="controls">
-            <button class="btn-primary" id="startBtn" onclick="startScanner()">
-                <span>▶️</span> Start Scanning
-            </button>
-            <button class="btn-secondary" id="stopBtn" onclick="stopScanner()" disabled>
-                <span>⏸️</span> Stop
-            </button>
-        </div>
-        
-        <div class="scans-container">
-            <div class="scans-header">
-                <h3>Recent Scans</h3>
-                <button class="btn-secondary" style="padding: 8px 15px; font-size: 14px;" 
-                        onclick="clearScans()">Clear</button>
-            </div>
-            <div id="scansList"></div>
-        </div>
-    </div>
-    
-    <audio id="beepSuccess" class="beep">
-        <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
-    </audio>
-    <audio id="beepError" class="beep">
-        <source src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-notification-946.mp3" type="audio/mpeg">
-    </audio>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
-    <script>
-        // Configuration
-        let config = {
-            ws: null,
-            connected: false,
-            scannerActive: false,
-            scans: [],
-            serverIP: null,
-            serverPort: null
-        };
-        
-        // DOM Elements
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const scansList = document.getElementById('scansList');
-        const beepSuccess = document.getElementById('beepSuccess');
-        const beepError = document.getElementById('beepError');
-        
-        // Initialize from URL parameters
-        function initFromUrl() {
-            const urlParams = new URLSearchParams(window.location.search);
-            config.serverIP = urlParams.get('ip') || localStorage.getItem('lastIP') || '192.168.1.100';
-            config.serverPort = urlParams.get('port') || localStorage.getItem('lastPort') || '8765';
-            
-            // Save for next time
-            localStorage.setItem('lastIP', config.serverIP);
-            localStorage.setItem('lastPort', config.serverPort);
-            
-            connectWebSocket();
-        }
-        
-        // WebSocket Connection
-        function connectWebSocket() {
-            if (config.ws) {
-                config.ws.close();
-            }
-            
-            updateStatus('Connecting to POS...', 'yellow');
-            
-            const wsUrl = `ws://${config.serverIP}:${config.serverPort}`;
-            config.ws = new WebSocket(wsUrl);
-            
-            config.ws.onopen = () => {
-                config.connected = true;
-                updateStatus('Connected ✓', 'green');
-                showNotification('Connected to POS system');
-            };
-            
-            config.ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    handleScanResponse(data);
-                } catch (e) {
-                    console.log('Server response:', event.data);
-                }
-            };
-            
-            config.ws.onclose = () => {
-                config.connected = false;
-                updateStatus('Disconnected ✗', 'red');
-                setTimeout(connectWebSocket, 3000);
-            };
-            
-            config.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                updateStatus('Connection failed', 'red');
-            };
-        }
-        
-        // Status updates
-        function updateStatus(text, color) {
-            statusText.textContent = text;
-            statusDot.className = 'status-dot';
-            if (color === 'green') {
-                statusDot.classList.add('connected');
-            }
-        }
-        
-        // Scanner functions
-        function startScanner() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert('Camera not supported on this device');
-                return;
-            }
-            
-            navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: "environment",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                } 
-            }).then(stream => {
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                
-                Quagga.init({
-                    inputStream: {
-                        name: "Live",
-                        type: "LiveStream",
-                        target: video,
-                        constraints: {
-                            facingMode: "environment"
-                        }
-                    },
-                    decoder: {
-                        readers: [
-                            "ean_reader",
-                            "ean_8_reader",
-                            "code_128_reader",
-                            "upc_reader",
-                            "upc_e_reader",
-                            "code_39_reader"
-                        ]
-                    },
-                    locate: true,
-                    frequency: 10
-                }, err => {
-                    if (err) {
-                        console.error(err);
-                        alert('Scanner initialization failed: ' + err);
-                        return;
-                    }
-                    
-                    Quagga.start();
-                    config.scannerActive = true;
-                    startBtn.disabled = true;
-                    stopBtn.disabled = false;
-                    updateStatus('Scanning...', 'green');
-                });
-                
-                Quagga.onDetected(result => {
-                    const code = result.codeResult.code;
-                    handleBarcodeDetected(code);
-                    
-                    // Brief pause to prevent duplicates
-                    Quagga.stop();
-                    setTimeout(() => {
-                        if (config.scannerActive) Quagga.start();
-                    }, 500);
-                });
-                
-            }).catch(err => {
-                alert('Camera error: ' + err.message);
-                console.error(err);
-            });
-        }
-        
-        function stopScanner() {
-            if (config.scannerActive) {
-                Quagga.stop();
-                config.scannerActive = false;
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-                updateStatus('Ready', 'green');
-                
-                // Stop video stream
-                const video = document.getElementById('video');
-                if (video.srcObject) {
-                    video.srcObject.getTracks().forEach(track => track.stop());
-                }
-            }
-        }
-        
-        // Barcode handling
-        function handleBarcodeDetected(barcode) {
-            console.log('Detected:', barcode);
-            
-            // Add to recent scans immediately
-            addToScanList({
-                barcode: barcode,
-                product: 'Processing...',
-                time: new Date().toLocaleTimeString(),
-                status: 'processing'
-            });
-            
-            // Send to POS
-            if (config.ws && config.ws.readyState === WebSocket.OPEN) {
-                config.ws.send(barcode);
-                playBeep('success');
-            } else {
-                showNotification('Not connected to POS', 'error');
-                playBeep('error');
-            }
-        }
-        
-        function handleScanResponse(data) {
-            const scan = config.scans.find(s => s.barcode === data.barcode);
-            if (scan) {
-                scan.status = data.status;
-                
-                if (data.status === 'success') {
-                    scan.product = `${data.product} - $${data.price}`;
-                    scan.success = true;
-                    showNotification(`Scanned: ${data.product}`);
-                } else {
-                    scan.product = 'Product not found';
-                    scan.success = false;
-                    showNotification('Product not found', 'error');
-                }
-                
-                updateScansList();
-            }
-        }
-        
-        // UI updates
-        function addToScanList(scan) {
-            config.scans.unshift(scan);
-            if (config.scans.length > 10) {
-                config.scans.pop();
-            }
-            updateScansList();
-        }
-        
-        function updateScansList() {
-            scansList.innerHTML = '';
-            config.scans.forEach(scan => {
-                const item = document.createElement('div');
-                item.className = 'scan-item';
-                
-                const statusColor = scan.status === 'success' ? '#10B981' : 
-                                  scan.status === 'error' ? '#EF4444' : '#F59E0B';
-                
-                item.innerHTML = `
-                    <div class="scan-barcode" style="color: ${statusColor}">${scan.barcode}</div>
-                    <div class="scan-product">${scan.product}</div>
-                    <div class="scan-time">${scan.time}</div>
-                `;
-                scansList.appendChild(item);
-            });
-        }
-        
-        function clearScans() {
-            config.scans = [];
-            updateScansList();
-        }
-        
-        function showNotification(message, type = 'success') {
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.textContent = message;
-            notification.style.background = type === 'error' ? '#EF4444' : 
-                                          type === 'warning' ? '#F59E0B' : '#10B981';
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
-        }
-        
-        function playBeep(type) {
-            try {
-                if (type === 'success') {
-                    beepSuccess.currentTime = 0;
-                    beepSuccess.play();
-                } else {
-                    beepError.currentTime = 0;
-                    beepError.play();
-                }
-            } catch (e) {
-                // Audio not critical
-            }
-        }
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TwinOne Scanner</title>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <style>
-        body { 
-            font-family: sans-serif; 
-            background: #1a1a1a; 
-            color: white; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            margin: 0; 
-            padding: 20px; 
-            box-sizing: border-box; 
-        }
-        .container { width: 100%; max-width: 400px; text-align: center; }
-        #reader { 
-            width: 100%; 
-            border-radius: 10px; 
-            overflow: hidden; 
-            background: #000; 
-            margin-bottom: 20px; 
-            min-height: 300px; 
-        }
-        .status { padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; }
-        .connected { background: #10B981; color: white; }
-        .disconnected { background: #EF4444; color: white; }
-        .warning { background: #F59E0B; color: white; }
-        .info { background: #3B82F6; color: white; }
-        .scanned-data { 
-            font-size: 1.2em; 
-            color: #6366F1; 
-            margin-top: 10px; 
-            min-height: 1.5em; 
-            word-break: break-all; 
-            padding: 10px;
-            background: rgba(99, 102, 241, 0.1);
-            border-radius: 5px;
-        }
-        h2 { margin-bottom: 10px; }
-        p { color: #aaa; font-size: 0.9em; }
-        .info-box { 
-            background: #3B82F6; 
-            color: white; 
-            padding: 10px; 
-            border-radius: 5px; 
-            margin-bottom: 15px; 
-            font-size: 0.9em; 
-        }
-        .step { margin: 10px 0; text-align: left; }
-        .step-number { 
-            display: inline-block; 
-            background: white; 
-            color: #3B82F6; 
-            width: 24px; 
-            height: 24px; 
-            border-radius: 50%; 
-            text-align: center; 
-            line-height: 24px; 
-            font-weight: bold; 
-            margin-right: 8px; 
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>📦 Inventory Scanner</h2>
-        
-        <div id="connection-status" class="status info">Ready to scan QR code</div>
-        
-        <div id="instructions" class="info-box">
-            <div class="step">
-                <span class="step-number">1</span>
-                Allow camera access when prompted
-            </div>
-            <div class="step">
-                <span class="step-number">2</span>
-                Point camera at QR code on PC
-            </div>
-            <div class="step">
-                <span class="step-number">3</span>
-                Start scanning barcodes!
-            </div>
-        </div>
-        
-        <div id="reader"></div>
-        
-        <p>Last Scanned:</p>
-        <div id="last-scanned" class="scanned-data">-</div>
-    </div>
-    
-    <script>
-        const statusDiv = document.getElementById('connection-status');
-        const lastScannedDiv = document.getElementById('last-scanned');
-        const instructionsDiv = document.getElementById('instructions');
-        let socket;
-        let isScanning = true;
-        let html5QrcodeScanner;
-        let isConnectedToPc = false;
-
-        // Get IP from URL Parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        let pcIp = urlParams.get('ip');
-
-        function connectWebSocket(ip) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.close();
-            }
-
-            statusDiv.innerText = "🔄 Connecting to PC...";
-            statusDiv.className = "status warning";
-
-            socket = new WebSocket(`ws://${ip}:8765`);
-
-            socket.onopen = () => {
-                statusDiv.innerText = "🟢 Connected to PC - Ready to scan";
-                statusDiv.className = "status connected";
-                isConnectedToPc = true;
-                instructionsDiv.style.display = 'none';
-            };
-
-            socket.onclose = () => {
-                statusDiv.innerText = "🔴 Disconnected - Reconnecting...";
-                statusDiv.className = "status disconnected";
-                isConnectedToPc = false;
-                setTimeout(() => connectWebSocket(ip), 3000);
-            };
-
-            socket.onerror = (error) => {
-                console.error("WebSocket Error:", error);
-            };
-        }
-
-        function onScanSuccess(decodedText, decodedResult) {
-            if (!isScanning) return;
-
-            isScanning = false;
-            lastScannedDiv.innerText = decodedText;
-
-            // Check if this is a QR code with an IP address (for initial setup)
-            if (!isConnectedToPc && decodedText.includes('?ip=')) {
-                // Extract IP from QR code URL
-                const match = decodedText.match(/ip=([0-9.]+)/);
-                if (match) {
-                    pcIp = match[1];
-                    statusDiv.innerText = "✅ QR Code scanned! Connecting...";
-                    statusDiv.className = "status info";
-                    connectWebSocket(pcIp);
-                    
-                    // Optionally redirect to the scanned URL
-                    setTimeout(() => {
-                        window.location.href = decodedText;
-                    }, 1500);
-                    return;
-                }
-            }
-
-            // Send barcode to WebSocket if connected
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(decodedText);
-                
-                // Visual feedback
-                lastScannedDiv.style.background = 'rgba(16, 185, 129, 0.2)';
-                setTimeout(() => {
-                    lastScannedDiv.style.background = 'rgba(99, 102, 241, 0.1)';
-                }, 500);
-            }
-
-            // Vibration feedback if supported
-            if (navigator.vibrate) {
-                navigator.vibrate(200);
-            }
-
-            setTimeout(() => { isScanning = true; }, 1500);
-        }
-
-        function onScanError(error) {
-            // Suppress frequent scanning errors
-        }
-
-        // Initialize scanner immediately
-        function initScanner() {
-            statusDiv.innerText = "📸 Requesting camera access...";
-            statusDiv.className = "status info";
-            
-            try {
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "reader", 
-                    { 
-                        fps: 10, 
-                        qrbox: { width: 250, height: 250 },
-                        rememberLastUsedCamera: true,
-                        aspectRatio: 1.0,
-                        showTorchButtonIfSupported: true
-                    }
-                );
-                
-                html5QrcodeScanner.render(onScanSuccess, onScanError);
-                
-                if (pcIp) {
-                    connectWebSocket(pcIp);
-                } else {
-                    statusDiv.innerText = "📷 Camera ready - Scan QR code on PC";
-                    statusDiv.className = "status info";
-                }
-                
-            } catch (error) {
-                console.error("Scanner initialization error:", error);
-                statusDiv.innerText = "❌ Error: " + error.message;
-                statusDiv.className = "status disconnected";
-            }
-        }
-
-        // Start scanner on page load
-        window.addEventListener('load', () => {
-            initScanner();
-        });
-    </script>
-</body>
-</html> --> -->
