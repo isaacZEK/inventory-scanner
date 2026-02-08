@@ -2,39 +2,132 @@
 <html>
 <head>
     <title>TOA Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body { 
-            font-family: Arial; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
             padding: 20px; 
             text-align: center; 
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            font-size: 28px;
+            margin-bottom: 20px;
         }
         
         #status { 
-            padding: 10px; 
-            margin: 10px; 
-            border-radius: 5px; 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-radius: 10px; 
             font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         
-        .connected { background: #4CAF50; color: white; }
-        .disconnected { background: #f44336; color: white; }
+        .connected { 
+            background: #10B981; 
+            color: white; 
+        }
+        
+        .disconnected { 
+            background: #EF4444; 
+            color: white; 
+        }
+        
+        .warning {
+            background: #F59E0B;
+            color: white;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: white;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .connection-info {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
         
         video { 
             width: 100%; 
-            max-width: 400px; 
-            border: 2px solid #ccc; 
-            border-radius: 10px; 
+            max-width: 100%;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px; 
+            background: #000;
+            margin: 15px 0;
+        }
+        
+        .video-container {
+            position: relative;
+            display: none;
+        }
+        
+        .video-container.active {
+            display: block;
+        }
+        
+        .scan-line {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: #10B981;
+            box-shadow: 0 0 10px #10B981;
+            animation: scan 2s linear infinite;
+        }
+        
+        @keyframes scan {
+            0% { top: 20%; }
+            50% { top: 80%; }
+            100% { top: 20%; }
         }
         
         button { 
-            padding: 10px 20px; 
-            margin: 10px; 
+            padding: 15px 25px; 
+            margin: 8px; 
             font-size: 16px; 
             border: none;
-            border-radius: 5px;
+            border-radius: 10px;
             cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            min-width: 160px;
         }
         
         button:disabled {
@@ -42,14 +135,25 @@
             cursor: not-allowed;
         }
         
-        #startBtn {
-            background: #4CAF50;
+        button:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-start {
+            background: #10B981;
             color: white;
         }
         
-        #stopBtn {
-            background: #f44336;
+        .btn-stop {
+            background: #EF4444;
             color: white;
+        }
+        
+        .btn-manual {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
         }
         
         /* Modal Overlay */
@@ -60,7 +164,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -94,12 +198,11 @@
             border: 2px solid #ddd;
             border-radius: 8px;
             margin-bottom: 20px;
-            box-sizing: border-box;
         }
         
         .modal-content input:focus {
             outline: none;
-            border-color: #4CAF50;
+            border-color: #10B981;
         }
         
         .modal-buttons {
@@ -109,44 +212,142 @@
         
         .modal-buttons button {
             flex: 1;
-            padding: 15px;
-            font-size: 16px;
-            border-radius: 8px;
             margin: 0;
         }
         
-        .btn-submit {
-            background: #4CAF50;
-            color: white;
+        .scans-container {
+            margin-top: 20px;
+            text-align: left;
         }
         
-        .btn-cancel {
-            background: #f44336;
+        .scans-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .scans-header h3 {
+            font-size: 18px;
+        }
+        
+        .btn-clear {
+            padding: 8px 15px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.2);
             color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            min-width: auto;
+        }
+        
+        #scans {
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .scan-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .scan-item strong {
+            display: block;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        
+        .scan-item .product {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 4px;
+        }
+        
+        .scan-item .time {
+            font-size: 12px;
+            opacity: 0.7;
+            text-align: right;
+        }
+        
+        .success { color: #10B981; }
+        .error { color: #EF4444; }
+        .processing { color: #F59E0B; }
+        
+        #scans::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #scans::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        #scans::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
         }
     </style>
 </head>
 <body>
-    <h1>📱 TOA Barcode Scanner</h1>
-    
-    <div id="status" class="disconnected">Disconnected</div>
-    
-    <div id="connectionInfo">
-        <p>Connecting to: <span id="serverInfo">...</span></p>
-    </div>
-    
-    <button onclick="startScanner()" id="startBtn">▶ Start Camera</button>
-    <button onclick="stopScanner()" id="stopBtn" disabled>⏹ Stop</button>
-    <button onclick="manualBarcodeEntry()">⌨️ Manual Entry</button>
-    
-    <div id="cameraContainer" style="display: none;">
-        <video id="video" autoplay playsinline></video>
-        <p>Point camera at barcode</p>
-    </div>
-    
-    <div id="scannedList" style="margin-top: 20px; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto;">
-        <h3>Recent Scans:</h3>
-        <div id="scans"></div>
+    <div class="container">
+        <h1>📱 TOA Barcode Scanner</h1>
+        
+        <div id="status" class="disconnected">
+            <div class="status-dot"></div>
+            <span id="statusText">Connecting...</span>
+        </div>
+        
+        <div class="connection-info" id="connectionInfo">
+            Connecting to server...
+        </div>
+        
+        <div class="video-container" id="videoContainer">
+            <video id="video" autoplay playsinline></video>
+            <div class="scan-line"></div>
+        </div>
+        
+        <div style="margin: 20px 0;">
+            <button onclick="startScanner()" id="startBtn" class="btn-start" disabled>
+                📷 Start Camera Scanner
+            </button>
+            <br>
+            <button onclick="stopScanner()" id="stopBtn" class="btn-stop" disabled>
+                ⏹ Stop Scanner
+            </button>
+            <br>
+            <button onclick="manualBarcodeEntry()" class="btn-manual">
+                ⌨️ Manual Entry
+            </button>
+        </div>
+        
+        <div class="scans-container">
+            <div class="scans-header">
+                <h3>Recent Scans</h3>
+                <button onclick="clearScans()" class="btn-clear">Clear</button>
+            </div>
+            <div id="scans">
+                <div class="scan-item">
+                    <strong>Waiting for scans...</strong>
+                    <div class="product">Connect and start scanning barcodes</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Manual Entry Modal -->
@@ -160,63 +361,128 @@
                 inputmode="numeric"
             >
             <div class="modal-buttons">
-                <button class="btn-submit" onclick="submitManualBarcode()">Submit</button>
-                <button class="btn-cancel" onclick="closeManual()">Cancel</button>
+                <button class="btn-start" onclick="submitManualBarcode()">Submit</button>
+                <button class="btn-stop" onclick="closeManual()">Cancel</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Get connection info from URL
+        // Get connection info from URL parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const serverIP = urlParams.get('ip') || 'localhost';
+        const serverIP = urlParams.get('ip') || window.location.hostname || 'localhost';
         const serverPort = urlParams.get('port') || '8765';
         
         let ws = null;
         let scannerActive = false;
         let scans = [];
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
         
-        // Update display
-        document.getElementById('serverInfo').textContent = `${serverIP}:${serverPort}`;
+        // Update connection info display
+        document.getElementById('connectionInfo').textContent = 
+            `Server: ${serverIP}:${serverPort}`;
         
         // Connect to WebSocket
         function connectWebSocket() {
             const wsUrl = `ws://${serverIP}:${serverPort}`;
-            ws = new WebSocket(wsUrl);
+            console.log('Connecting to:', wsUrl);
             
-            ws.onopen = () => {
-                document.getElementById('status').className = 'connected';
-                document.getElementById('status').textContent = 'Connected to POS ✓';
-                console.log('Connected to WebSocket');
-            };
+            updateStatus('Connecting...', 'warning');
             
-            ws.onmessage = (event) => {
-                console.log('Received:', event.data);
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.status === 'success') {
-                        addScan(data.barcode, data.product, true);
-                    } else {
-                        addScan(data.barcode, 'Not found', false);
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    console.log('✅ Connected to WebSocket');
+                    reconnectAttempts = 0;
+                    updateStatus('Connected ✓', 'connected');
+                    document.getElementById('startBtn').disabled = false;
+                    showNotification('Connected to POS', 'success');
+                };
+                
+                ws.onmessage = (event) => {
+                    console.log('📨 Received:', event.data);
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleServerResponse(data);
+                    } catch (e) {
+                        console.log('Raw message:', event.data);
                     }
-                } catch (e) {
-                    console.log('Raw message:', event.data);
-                }
-            };
+                };
+                
+                ws.onclose = (event) => {
+                    console.log('❌ WebSocket closed', event.code, event.reason);
+                    updateStatus('Disconnected ✗', 'disconnected');
+                    document.getElementById('startBtn').disabled = true;
+                    stopScanner();
+                    
+                    // Try to reconnect
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        const delay = Math.min(1000 * reconnectAttempts, 5000);
+                        console.log(`Reconnecting in ${delay/1000}s... (attempt ${reconnectAttempts})`);
+                        setTimeout(connectWebSocket, delay);
+                    } else {
+                        showNotification('Connection failed. Please refresh.', 'error');
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('❌ WebSocket error:', error);
+                    updateStatus('Connection Error', 'disconnected');
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create WebSocket:', error);
+                updateStatus('Connection Failed', 'disconnected');
+            }
+        }
+        
+        function updateStatus(text, state) {
+            const statusEl = document.getElementById('status');
+            const statusTextEl = document.getElementById('statusText');
             
-            ws.onclose = () => {
-                document.getElementById('status').className = 'disconnected';
-                document.getElementById('status').textContent = 'Disconnected - Retrying...';
-                setTimeout(connectWebSocket, 3000);
-            };
+            statusTextEl.textContent = text;
+            statusEl.className = state;
+        }
+        
+        function handleServerResponse(data) {
+            console.log('Server response:', data);
+            
+            // Find the scan in our list and update it
+            const scanIndex = scans.findIndex(s => s.barcode === data.barcode);
+            if (scanIndex !== -1) {
+                if (data.status === 'success') {
+                    scans[scanIndex].product = `${data.product} - $${data.price}`;
+                    scans[scanIndex].success = true;
+                    scans[scanIndex].status = 'success';
+                    showNotification(`Found: ${data.product}`, 'success');
+                    vibrate(200);
+                } else {
+                    scans[scanIndex].product = 'Product not found';
+                    scans[scanIndex].success = false;
+                    scans[scanIndex].status = 'error';
+                    showNotification('Product not found', 'error');
+                    vibrate([100, 50, 100]);
+                }
+                updateScansList();
+            }
         }
         
         // Start camera scanner
         function startScanner() {
             if (!navigator.mediaDevices?.getUserMedia) {
-                alert('Camera not supported');
+                alert('Camera not supported on this device');
                 return;
             }
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                showNotification('Not connected to POS', 'error');
+                return;
+            }
+            
+            updateStatus('Starting camera...', 'warning');
             
             navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: "environment" } 
@@ -225,49 +491,77 @@
                 video.srcObject = stream;
                 
                 // Show camera
-                document.getElementById('cameraContainer').style.display = 'block';
+                document.getElementById('videoContainer').classList.add('active');
                 document.getElementById('startBtn').disabled = true;
                 document.getElementById('stopBtn').disabled = false;
                 
-                // Initialize barcode scanner
+                // Initialize Quagga barcode scanner
                 Quagga.init({
                     inputStream: {
                         name: "Live",
                         type: "LiveStream",
                         target: video,
-                        constraints: { facingMode: "environment" }
+                        constraints: { 
+                            facingMode: "environment",
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
                     },
                     decoder: {
-                        readers: ["ean_reader", "code_128_reader", "upc_reader"]
-                    }
+                        readers: [
+                            "ean_reader",
+                            "ean_8_reader", 
+                            "code_128_reader", 
+                            "upc_reader",
+                            "upc_e_reader"
+                        ]
+                    },
+                    locate: true,
+                    frequency: 10
                 }, (err) => {
                     if (err) {
-                        alert('Scanner error: ' + err);
+                        console.error('Scanner error:', err);
+                        alert('Scanner initialization failed: ' + err);
+                        stopScanner();
                         return;
                     }
                     
                     Quagga.start();
                     scannerActive = true;
-                    
-                    Quagga.onDetected((result) => {
-                        const barcode = result.codeResult.code;
-                        console.log('Scanned:', barcode);
-                        
-                        // Send to WebSocket
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(barcode);
-                        }
-                        
-                        // Add to list immediately
-                        addScan(barcode, 'Processing...', null);
-                        
-                        // Visual feedback
-                        video.style.border = '3px solid #4CAF50';
-                        setTimeout(() => video.style.border = '2px solid #ccc', 500);
-                    });
+                    updateStatus('Scanning... 📷', 'connected');
+                    console.log('✅ Scanner started');
                 });
+                
+                Quagga.onDetected((result) => {
+                    if (!scannerActive) return;
+                    
+                    const barcode = result.codeResult.code;
+                    console.log('📦 Detected barcode:', barcode);
+                    
+                    // Visual feedback
+                    video.style.borderColor = '#10B981';
+                    setTimeout(() => {
+                        video.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                    }, 300);
+                    
+                    // Send to server
+                    sendBarcode(barcode);
+                    
+                    // Brief pause to prevent duplicate scans
+                    scannerActive = false;
+                    Quagga.stop();
+                    setTimeout(() => {
+                        if (document.getElementById('stopBtn').disabled === false) {
+                            Quagga.start();
+                            scannerActive = true;
+                        }
+                    }, 1000);
+                });
+                
             }).catch(err => {
+                console.error('Camera error:', err);
                 alert('Camera error: ' + err.message);
+                updateStatus('Camera Error', 'disconnected');
             });
         }
         
@@ -275,18 +569,47 @@
             if (scannerActive) {
                 Quagga.stop();
                 scannerActive = false;
-                
-                // Hide camera
-                document.getElementById('cameraContainer').style.display = 'none';
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('stopBtn').disabled = true;
-                
-                // Stop video stream
-                const video = document.getElementById('video');
-                if (video.srcObject) {
-                    video.srcObject.getTracks().forEach(track => track.stop());
-                }
             }
+            
+            // Hide camera
+            document.getElementById('videoContainer').classList.remove('active');
+            document.getElementById('startBtn').disabled = !ws || ws.readyState !== WebSocket.OPEN;
+            document.getElementById('stopBtn').disabled = true;
+            
+            // Stop video stream
+            const video = document.getElementById('video');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                updateStatus('Connected ✓', 'connected');
+            } else {
+                updateStatus('Disconnected', 'disconnected');
+            }
+        }
+        
+        function sendBarcode(barcode) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                showNotification('Not connected to POS', 'error');
+                return false;
+            }
+            
+            console.log('📤 Sending barcode:', barcode);
+            
+            // Add to scans list immediately
+            addScan({
+                barcode: barcode,
+                product: 'Processing...',
+                time: new Date().toLocaleTimeString(),
+                status: 'processing',
+                success: null
+            });
+            
+            // Send to server
+            ws.send(barcode);
+            return true;
         }
         
         // Manual entry functions
@@ -299,14 +622,9 @@
         function submitManualBarcode() {
             const barcode = document.getElementById('manualBarcode').value.trim();
             if (barcode) {
-                // Send to WebSocket
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(barcode);
-                    addScan(barcode, 'Processing...', null);
-                } else {
-                    alert('Not connected to POS');
+                if (sendBarcode(barcode)) {
+                    closeManual();
                 }
-                closeManual();
             } else {
                 alert('Please enter a barcode');
             }
@@ -318,30 +636,58 @@
             document.getElementById('manualBarcode').value = '';
         }
         
-        function addScan(barcode, product, success) {
-            const time = new Date().toLocaleTimeString();
-            scans.unshift({ barcode, product, time, success });
-            
-            if (scans.length > 10) scans.pop();
-            
-            // Update display
+        function addScan(scan) {
+            scans.unshift(scan);
+            if (scans.length > 20) {
+                scans.pop();
+            }
+            updateScansList();
+        }
+        
+        function updateScansList() {
             const scansDiv = document.getElementById('scans');
-            scansDiv.innerHTML = scans.map(scan => `
-                <div style="padding: 10px; margin: 5px; background: ${getScanColor(scan.success)}; border-radius: 5px;">
-                    <div><strong>${scan.barcode}</strong></div>
-                    <div>${scan.product}</div>
-                    <div style="font-size: 12px; color: #666;">${scan.time}</div>
-                </div>
-            `).join('');
+            
+            if (scans.length === 0) {
+                scansDiv.innerHTML = `
+                    <div class="scan-item">
+                        <strong>Waiting for scans...</strong>
+                        <div class="product">Connect and start scanning barcodes</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            scansDiv.innerHTML = scans.map(scan => {
+                const statusClass = scan.status || (scan.success === true ? 'success' : scan.success === false ? 'error' : 'processing');
+                return `
+                    <div class="scan-item">
+                        <strong class="${statusClass}">${scan.barcode}</strong>
+                        <div class="product">${scan.product}</div>
+                        <div class="time">${scan.time}</div>
+                    </div>
+                `;
+            }).join('');
         }
         
-        function getScanColor(success) {
-            if (success === true) return '#d4edda';
-            if (success === false) return '#f8d7da';
-            return '#fff3cd';
+        function clearScans() {
+            if (confirm('Clear all scan history?')) {
+                scans = [];
+                updateScansList();
+            }
         }
         
-        // Close modal on ESC key
+        function showNotification(message, type = 'success') {
+            // Simple notification (you can enhance this)
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        function vibrate(pattern) {
+            if (navigator.vibrate) {
+                navigator.vibrate(pattern);
+            }
+        }
+        
+        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeManual();
@@ -350,8 +696,11 @@
             }
         });
         
-        // Initialize connection
-        connectWebSocket();
+        // Initialize connection when page loads
+        window.addEventListener('load', () => {
+            console.log('Page loaded, connecting to WebSocket...');
+            connectWebSocket();
+        });
     </script>
 </body>
 </html>
