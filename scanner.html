@@ -1,4 +1,545 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        /* iOS-like CSS variables */
+        :root {
+            --ios-bg: #000000;
+            --ios-card: rgba(28, 28, 30, 0.85);
+            --ios-text: #ffffff;
+            --ios-accent: #0A84FF;
+            --ios-success: #30D158;
+            --ios-danger: #FF453A;
+            --ios-blur: blur(20px);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--ios-bg);
+            color: var(--ios-text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Full screen scanner */
+        #reader {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            background: black;
+        }
+
+        /* UI Overlay Layer */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Top Bar (Dynamic Island style) */
+        .top-bar {
+            padding: 50px 20px 10px;
+            display: flex;
+            justify-content: center;
+            pointer-events: auto;
+        }
+
+        .status-pill {
+            background: rgba(20, 20, 20, 0.7);
+            backdrop-filter: var(--ios-blur);
+            -webkit-backdrop-filter: var(--ios-blur);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #FF453A;
+            transition: background-color 0.3s;
+        }
+
+        .status-pill.connected .status-dot { background-color: #30D158; box-shadow: 0 0 8px #30D158; }
+        .status-pill.connecting .status-dot { background-color: #FF9F0A; animation: pulse 1s infinite; }
+
+        /* Viewfinder Overlay */
+        .viewfinder {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .scan-frame {
+            width: 70%;
+            aspect-ratio: 1;
+            border-radius: 24px;
+            position: relative;
+            box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.5); /* Dim background */
+        }
+        
+        .scan-frame::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+        }
+
+        .scan-corner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-color: var(--ios-accent);
+            border-style: solid;
+            border-width: 4px;
+            border-radius: 4px;
+            opacity: 0.8;
+        }
+
+        .tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 24px; }
+        .tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 24px; }
+        .bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 24px; }
+        .br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 24px; }
+
+        .scan-laser {
+            position: absolute;
+            top: 50%;
+            left: 5%;
+            right: 5%;
+            height: 2px;
+            background: var(--ios-danger);
+            box-shadow: 0 0 15px var(--ios-danger);
+            animation: scan 2s ease-in-out infinite;
+            opacity: 0.8;
+        }
+
+        /* Bottom Controls */
+        .bottom-controls {
+            padding: 20px;
+            padding-bottom: 40px;
+            pointer-events: auto;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .icon-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+        }
+
+        .icon-btn:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.3); }
+
+        /* Recent Scans Sheet */
+        .recent-sheet {
+            background: var(--ios-card);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            height: 50vh;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            transform: translateY(calc(100% - 70px));
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .recent-sheet.expanded { transform: translateY(0); }
+
+        .sheet-header {
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .sheet-handle {
+            width: 40px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+            margin: 0 auto 10px;
+        }
+
+        .sheet-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: rgba(255,255,255,0.8);
+        }
+
+        #scansList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 20px 20px;
+        }
+
+        .scan-item {
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        .scan-info { display: flex; flex-direction: column; gap: 4px; }
+        .scan-code { font-weight: 600; font-size: 17px; letter-spacing: 0.5px; }
+        .scan-product { font-size: 14px; color: var(--ios-accent); }
+        .scan-time { font-size: 12px; color: rgba(255, 255, 255, 0.4); }
+        
+        .status-badge {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.1);
+        }
+        .status-badge.success { color: var(--ios-success); background: rgba(48, 209, 88, 0.15); }
+        .status-badge.error { color: var(--ios-danger); background: rgba(255, 69, 58, 0.15); }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .modal.active { opacity: 1; pointer-events: auto; }
+        
+        .modal-content {
+            background: #1C1C1E;
+            width: 85%;
+            max-width: 320px;
+            border-radius: 18px;
+            padding: 24px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        
+        .modal-input {
+            width: 100%;
+            background: #2C2C2E;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            color: white;
+            font-size: 18px;
+            margin: 20px 0;
+            text-align: center;
+            outline: none;
+        }
+        
+        .modal-actions { display: flex; gap: 12px; }
+        .modal-btn { flex: 1; padding: 14px; border-radius: 10px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .btn-cancel { background: #2C2C2E; color: #0A84FF; }
+        .btn-confirm { background: #0A84FF; color: white; }
+
+        @keyframes scan { 0% { top: 10%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 90%; opacity: 0; } }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Hide library elements */
+        #reader video { object-fit: cover; width: 100% !important; height: 100% !important; border-radius: 0 !important; }
+        #reader__scan_region { background: transparent !important; }
+        #reader__dashboard_section_csr span, #reader__dashboard_section_swaplink { display: none !important; }
+    </style>
+</head>
+<body>
+    <!-- Scanner Element -->
+    <div id="reader"></div>
+
+    <!-- UI Overlay -->
+    <div class="ui-layer">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="status-pill" id="statusPill">
+                <div class="status-dot"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+
+        <!-- Viewfinder Guide -->
+        <div class="viewfinder">
+            <div class="scan-frame">
+                <div class="scan-corner tl"></div>
+                <div class="scan-corner tr"></div>
+                <div class="scan-corner bl"></div>
+                <div class="scan-corner br"></div>
+                <div class="scan-laser"></div>
+            </div>
+        </div>
+
+        <!-- Bottom Controls -->
+        <div class="bottom-controls">
+            <div class="control-row">
+                <button class="icon-btn" onclick="toggleTorch()" id="torchBtn">⚡</button>
+                <button class="icon-btn" onclick="openManualInput()" style="width: 65px; height: 65px; background: var(--ios-accent); font-size: 28px; box-shadow: 0 4px 15px rgba(10, 132, 255, 0.4);">⌨️</button>
+                <button class="icon-btn" onclick="toggleCamera()">🔄</button>
+            </div>
+        </div>
+
+        <!-- Recent Scans Sheet -->
+        <div class="recent-sheet" id="recentSheet">
+            <div class="sheet-header" onclick="toggleSheet()">
+                <div class="sheet-handle"></div>
+                <div class="sheet-title">Recent Scans</div>
+            </div>
+            <div id="scansList">
+                <div style="text-align: center; padding: 20px; color: rgba(255,255,255,0.3);">
+                    No scans yet
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Input Modal -->
+    <div class="modal" id="manualModal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 8px; color: white;">Manual Entry</h3>
+            <p style="font-size: 13px; color: #888;">Type the barcode number</p>
+            <input type="text" class="modal-input" id="manualInput" placeholder="123456789" inputmode="numeric">
+            <div class="modal-actions">
+                <button class="modal-btn btn-cancel" onclick="closeManualInput()">Cancel</button>
+                <button class="modal-btn btn-confirm" onclick="submitManual()">Scan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const serverIP = urlParams.get('ip') || window.location.hostname || 'localhost';
+        const defaultPort = window.location.protocol === 'https:' ? '443' : '8765';
+        const serverPort = urlParams.get('port') || window.location.port || defaultPort;
+        
+        let ws = null;
+        let html5QrCode = null;
+        let isScanning = false;
+        let scans = [];
+        let currentCameraId = null;
+        
+        // --- WebSocket Logic ---
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${serverIP}:${serverPort}`;
+            
+            updateStatus('Connecting...', 'connecting');
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    updateStatus('Connected', 'connected');
+                    startScanner();
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleServerResponse(data);
+                    } catch (e) { console.log('Raw:', event.data); }
+                };
+                
+                ws.onclose = () => {
+                    updateStatus('Disconnected', 'disconnected');
+                    setTimeout(connectWebSocket, 3000);
+                };
+                
+            } catch (error) { updateStatus('Error', 'disconnected'); }
+        }
+        
+        function updateStatus(text, state) {
+            const pill = document.getElementById('statusPill');
+            document.getElementById('statusText').textContent = text;
+            pill.className = `status-pill ${state}`;
+        }
+        
+        // --- Scanner Logic ---
+        function startScanner() {
+            if (isScanning) return;
+            
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: window.innerHeight/window.innerWidth };
+            
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => { isScanning = true; })
+                .catch(err => console.error("Error starting scanner", err));
+        }
+        
+        function sendBarcode(barcode) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            playBeep();
+            if (navigator.vibrate) navigator.vibrate(50);
+            
+            addScan({
+                barcode: barcode,
+                product: 'Processing...',
+                time: new Date().toLocaleTimeString(),
+                status: 'pending'
+            });
+            
+            ws.send(barcode);
+        }
+        
+        function onScanSuccess(decodedText) {
+            if (scans.length > 0 && scans[0].barcode === decodedText && 
+                (new Date() - new Date('1970-01-01T' + scans[0].time)) < 2500) return; // Debounce
+                
+            sendBarcode(decodedText);
+        }
+        
+        function handleServerResponse(data) {
+            const index = scans.findIndex(s => s.barcode === data.barcode && s.status === 'pending');
+            if (index !== -1) {
+                scans[index].status = data.status;
+                scans[index].product = data.status === 'success' ? data.product : 'Not Found';
+                if (data.status === 'success') {
+                    if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+                }
+                renderScans();
+            }
+        }
+        
+        // --- UI Logic ---
+        function addScan(scan) {
+            scans.unshift(scan);
+            renderScans();
+        }
+        
+        function renderScans() {
+            const list = document.getElementById('scansList');
+            if (scans.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 20px; color: rgba(255,255,255,0.3);">No scans yet</div>';
+                return;
+            }
+            
+            list.innerHTML = scans.map(s => `
+                <div class="scan-item">
+                    <div class="scan-info">
+                        <div class="scan-code">${s.barcode}</div>
+                        <div class="scan-product">${s.product}</div>
+                        <div class="scan-time">${s.time}</div>
+                    </div>
+                    <div class="status-badge ${s.status === 'success' ? 'success' : (s.status === 'pending' ? '' : 'error')}">
+                        ${s.status === 'success' ? 'FOUND' : (s.status === 'pending' ? '...' : 'ERROR')}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function toggleSheet() {
+            document.getElementById('recentSheet').classList.toggle('expanded');
+        }
+        
+        function openManualInput() {
+            document.getElementById('manualModal').classList.add('active');
+            document.getElementById('manualInput').focus();
+        }
+        
+        function closeManualInput() {
+            document.getElementById('manualModal').classList.remove('active');
+        }
+        
+        function submitManual() {
+            const val = document.getElementById('manualInput').value;
+            if (val) {
+                sendBarcode(val);
+                document.getElementById('manualInput').value = '';
+                closeManualInput();
+            }
+        }
+        
+        function toggleTorch() {
+            // Html5Qrcode doesn't support torch toggle easily in standard mode without camera capability check
+            // This is a placeholder for advanced implementation
+            alert("Torch control requires advanced camera permissions.");
+        }
+        
+        function toggleCamera() {
+            // Switch camera logic would go here (requires stopping and restarting with new ID)
+        }
+        
+        function playBeep() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = "sine";
+            osc.frequency.value = 1200;
+            gain.gain.value = 0.1;
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1);
+            setTimeout(() => osc.stop(), 100);
+        }
+
+        // Init
+        window.onload = connectWebSocket;
+    </script>
+</body>
+</html>
+
+<!-- <!DOCTYPE html>
 <html>
 <head>
     <title>TOA Scanner</title>
@@ -703,4 +1244,4 @@
         });
     </script>
 </body>
-</html>
+</html> -->
